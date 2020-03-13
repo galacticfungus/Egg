@@ -1,0 +1,9 @@
+[package]
+name = "egg-cli"
+version = "0.1.0"
+authors = ["Luke"]
+edition = "2018"
+
+[dependencies]
+egg = { path = "../egg" }
+clap = "2.33.0"

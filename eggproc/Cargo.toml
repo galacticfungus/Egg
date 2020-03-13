@@ -1,0 +1,7 @@
+[package]
+name = "eggproc"
+version = "0.1.0"
+authors = ["Luke"]
+edition = "2018"
+
+[dependencies]
