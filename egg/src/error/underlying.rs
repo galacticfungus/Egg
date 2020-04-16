@@ -7,6 +7,7 @@ pub enum UnderlyingError {
     Io(io::Error),
     InvalidString(string::FromUtf8Error),
     FailedConversion(std::num::TryFromIntError),
+    // TODO: Path fail may need to be more generic than this
     PathFail(std::path::StripPrefixError),
 }
 

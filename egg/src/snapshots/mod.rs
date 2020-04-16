@@ -19,7 +19,7 @@ use types::SnapshotBuilder;
 
 type Result<T> = std::result::Result<T, Error>;
 
-// Defines a public interface for the snapshot system
+// Defines a public interface for the snapshot system, used to store and load snapshots from the repository
 #[derive(Debug)]
 pub(crate) struct RepositorySnapshots {
     state: StorageState,       // Reads, writes and stores the current state of the snapshot system
@@ -29,12 +29,12 @@ pub(crate) struct RepositorySnapshots {
 
 impl RepositorySnapshots {
     /// Creates a new snapshot system in a repository that is being created
-    pub(crate) fn initialize(base_path: &path::Path) -> Result<RepositorySnapshots> {
+    pub(crate) fn initialize(base_path: &path::Path, working_path: &path::Path) -> Result<RepositorySnapshots> {
         // initialize state - this requires a path to an initial snapshot data file
         let state = StorageState::initialize(base_path)?;
         let index = SnapshotIndex::init();
         // Initialize the infrastructure used to perform atomic updates to multiple files at once
-        AtomicUpdate::init(base_path)?;
+        AtomicUpdate::init(base_path, working_path)?;
         // TODO: Need to obtain a rough estimate of the initial size of the memory structures
         let snapshot_storage = RepositorySnapshots {
             state,
@@ -133,7 +133,6 @@ impl RepositorySnapshots {
         } else {
             return self.take_root_snapshot(snapshot_message.into(), files_to_snapshot, path_to_repository, path_to_working, file_storage);
         }
-
     }
     /// Take a snapshot that has no parent
     fn take_root_snapshot(&mut self, snapshot_message: String, files_to_snapshot: Vec<path::PathBuf>, path_to_repository: &path::Path, path_to_working: &path::Path, file_storage: &LocalFileStorage) -> Result<SnapshotId> {
@@ -143,20 +142,23 @@ impl RepositorySnapshots {
             Ok(snapshot_files) => builder.add_files(snapshot_files),
             Err(error) => unimplemented!(),
         }
+        // FIXME:  FIX BUILDER ie returns self
         builder.set_message(snapshot_message.into());
         builder.change_parent(None);
         let snapshot = builder.build();
-        let mut atomic = AtomicUpdate::new(path_to_repository);
+        let mut atomic = AtomicUpdate::new(path_to_working, path_to_repository);
         // Let atomic know about the snapshot file that needs to be created
-        let path_to_snapshot = atomic.queue_create(String::from(snapshot.get_hash()));
+        let file_name = String::from(snapshot.get_hash());
+        let snapshot_filename = path::Path::new("snapshots").join(file_name);
+        let path_to_snapshot = atomic.queue_create(snapshot_filename).map_err(|err| err.add_generic_message("During a root snapshot operation"))?;
         // Write the snapshot to disk
         if let Err(error) = RepositoryStorage::store(&snapshot, path_to_snapshot.as_path(), path_to_working, path_to_repository) {
             unimplemented!("Failed to write snapshot, error was {:?}", error);
         };
         // Process all the files that will be stored in this snapshot and prepare to store them into the repository
-        file_storage.store_snapshot(&snapshot, &mut atomic);
+        file_storage.store_snapshot(&snapshot, &mut atomic).map_err(|err| err.add_generic_message("Failed to store a snapshot while taking a root snapshot"))?;
         // Update state and queue file changes
-        self.update_state_for_root_snapshot(&mut atomic, &snapshot, self.snapshots.len())?;
+        self.update_state(&mut atomic, &snapshot, false)?;
         self.finish_taking_snapshot(snapshot, atomic)
     }
 
@@ -165,7 +167,7 @@ impl RepositorySnapshots {
         let mut builder = SnapshotBuilder::new();
         let mut file_iterator = files_to_snapshot.iter();
         let files_valid = file_iterator.all(|path| {
-            (path.exists() && path.is_absolute())
+            path.exists() && path.is_absolute()
         });
         if files_valid == false {
             unimplemented!("Files were not valid, list of files were {:?}", files_to_snapshot.as_slice());
@@ -179,14 +181,14 @@ impl RepositorySnapshots {
         let parent_hash = parent_snapshot.take_hash();
         builder.change_parent(Some(parent_hash.clone()));
         let snapshot = builder.build();
-        let mut atomic = AtomicUpdate::new(path_to_repository);
-        let path_to_snapshot = atomic.queue_create(String::from(snapshot.get_hash()));
+        let mut atomic = AtomicUpdate::new(path_to_working, path_to_repository);
+        let path_to_snapshot = atomic.queue_create(String::from(snapshot.get_hash())).map_err(|err| err.add_generic_message("During a snapshot operation"))?;
         // Queue the snapshot to be written to disk
         if let Err(error) = RepositoryStorage::store(&snapshot, path_to_snapshot.as_path(), path_to_working, path_to_repository) {
             unimplemented!("Failed to write snapshot, error was {:?}", error);
         };
         // Process all the files that will be stored in this snapshot and prepare to store them into the repository
-        file_storage.store_snapshot(&snapshot, &mut atomic);
+        file_storage.store_snapshot(&snapshot, &mut atomic).map_err(|err| err.add_generic_message("Store snapshot failed during a child snapshot"))?;
         // The parent needs to be modified so that it knows about its new child
         println!("Modifying the parent snapshot");
         // TODO: Check for cyclic references - ie parent points to itself 
@@ -195,54 +197,50 @@ impl RepositorySnapshots {
         // Adjust the snapshot record
         parent_snapshot.add_child(snapshot.get_hash().clone());
         // Queue the file replacement operation
-        let path_to_parent_snapshot = atomic.queue_replace(parent_snapshot.get_hash());
+        let path_to_parent = path::Path::new("snapshots");
+        let path_to_parent_snapshot = atomic.queue_replace(path_to_parent.join(String::from(parent_snapshot.get_hash()))).map_err(|err| err.add_generic_message("During a root snapshot"))?;
         // Rewrite the snapshot
         println!("Rewriting snapshot {:?}", parent_snapshot);
+        let new_parent = parent_snapshot.get_children().len() == 1;
+        // TODO: Does not actually store just queues the operation so rename
         if let Err(error) = RepositoryStorage::store(parent_snapshot, path_to_parent_snapshot.as_path(), path_to_working, path_to_repository) {
             unimplemented!("Error: {}", error);
             // TODO: Complete error
         }
         println!("Finished rewriting parent");
-        
         // Update state and queue file changes
-        self.update_state_for_child_snapshot(&mut atomic, &snapshot, self.snapshots.len())?;
+        self.update_state(&mut atomic, &snapshot, new_parent)?;
         self.finish_taking_snapshot(snapshot, atomic)
     }
-
-    fn update_state_for_root_snapshot(&mut self, atomic: &mut AtomicUpdate, snapshot: &Snapshot, total_snapshots: usize) -> Result<()> {
-        self.state.change_state(atomic, |state_data| {                            
-            // This snapshot has no parent so add it as a root snapshot
-            state_data.add_root_node(snapshot.get_hash().clone());
-            state_data.add_end_node(snapshot.get_hash().clone());
-            println!("Add as root hash");
-            // Update latest snapshot
-            state_data.set_latest_snapshot(Some(snapshot.get_hash().clone()));
-            Ok(())
-        })
-    }
-
-    fn update_state_for_child_snapshot(&mut self, atomic: &mut AtomicUpdate, snapshot: &Snapshot, total_snapshots: usize) -> Result<()> {
-        self.state.change_state(atomic, |state_data| {            
+    
+    // Updates the snapshot state for a child snapshot
+    fn update_state(&mut self, atomic: &mut AtomicUpdate, snapshot: &Snapshot, new_parent: bool) -> Result<()> {
+        self.state.change_state(atomic, |state_data| {
             if let Some(parent) = snapshot.get_parent() {
-                // Remove the parent as a end node, as long as we don't insert snapshots between snapshots this will work
+                // Remove the parent as a end node if it is a new parent, as long as we don't insert snapshots between snapshots this will work
                 // TODO: If a second child is being added to a parent then this will fail since the parent node is not a end node already
-                state_data.remove_end_node(parent); 
-                state_data.add_end_node(snapshot.get_hash().clone());
+                if new_parent {
+                    state_data.remove_end_node(parent);
+                }
+                
             } else {
                 // If this snapshot has no parent add it as a root snapshot
                 state_data.add_root_node(snapshot.get_hash().clone());
+                // TODO: and as a end node since it has no children either
                 println!("Add as root hash");
             }
+            // Regardless of whether the snapshot is a child or not it will always be a end node as we never insert between nodes
+            state_data.add_end_node(snapshot.get_hash().clone());
             // Update latest snapshot
             state_data.set_latest_snapshot(Some(snapshot.get_hash().clone()));
             Ok(())
         })
     }
-
+    // TODO: Rename to update_repository
     /// Updates the index of the snapshot, adds the snapshot to the list of loaded snapshots and lets AtomicUpdate know that all operations have been queued
     fn finish_taking_snapshot(&mut self, snapshot: Snapshot, atomic: AtomicUpdate) -> Result<SnapshotId> {
         // TODO: Move to its own function
-        let RepositorySnapshots { ref mut snapshots, ref mut state, index: ref mut snapshot_index, } = self;
+        let RepositorySnapshots { ref mut snapshots, index: ref mut snapshot_index, .. } = self;
         // Update index
         snapshot_index.index_snapshot(&snapshot, snapshots.len())?;
         // Add snapshot to the vector
@@ -270,15 +268,15 @@ impl RepositorySnapshots {
                 }
                 match snapshot_index.get_id(hash) {
                     Some(SnapshotId::Indexed(parent_index, _)) => snapshots.get_mut(parent_index).unwrap(),
-                    _ => unreachable!("A snapshot returned an unloaded ID after being loaded"),
+                    _ => unreachable!("A snapshot returned an unloaded ID after being loaded, Hash was {}, Snapshots was {:?} and index was {:?}", hash, snapshots, snapshot_index),
                 }
             },
             None => unreachable!("The hash of a snapshot's parent does not exist in the repository"),
         }
     }
+
     // TODO: Unused?
     pub fn get_snapshot_by_hash<'a>(&self, snapshot_index: &mut SnapshotIndex, snapshots: &'a mut Vec<Snapshot>, hash: &Hash, path_to_repository: &path::Path, path_to_working: &path::Path) -> &'a Snapshot {
-        
         match snapshot_index.get_id(hash) {
             Some(SnapshotId::Indexed(index, _)) => {
                 // Get snapshot from vector
@@ -305,7 +303,8 @@ impl RepositorySnapshots {
         if let SnapshotId::Indexed(index, _) = id {
             println!("Returning index {} from array of {:?}", index, self.snapshots);
             return Some(&self.snapshots[index]);
-        } // The ID is a hash but check if that hash has been loaded
+        }
+        // The ID is a hash but check if that hash has been loaded, this is the same as Some(SnapshotId::NotLoaded(hash) = hash)
         else if let Some(SnapshotId::Indexed(index, _)) = self.index.get_id(id.get_hash()) {
             // TODO: Panic in debug builds?
             // Snapshot is loaded but an unloaded ID was passed - so the ID is out of date
@@ -461,7 +460,7 @@ mod tests {
         let id = Hash::generate_snapshot_id(message.as_str(), files.as_mut_slice());
         let snapshot = Snapshot::new(id.clone(), message, files, Vec::new(), None);
         {
-            RepositorySnapshots::initialize(path_to_repository).expect("Failed to Initialize Snapshot Storage");
+            RepositorySnapshots::initialize(path_to_repository, path_to_working).expect("Failed to Initialize Snapshot Storage");
         }
         {
             let fs = LocalFileStorage::initialize(path_to_repository).expect("Failed to initialize Local File Storage");
@@ -493,7 +492,7 @@ mod tests {
         
         let fs = LocalFileStorage::initialize(path_to_repository).expect("Failed to init fs");
         {
-            let mut ss = RepositorySnapshots::initialize(path_to_repository).expect("Failed to Initialize Snapshot Storage");
+            let mut ss = RepositorySnapshots::initialize(path_to_repository, path_to_working).expect("Failed to Initialize Snapshot Storage");
             ss.take_snapshot(None, "A Message", file_list, path_to_repository, path_to_working, &fs).expect("Failed to take snapshot");
         }
         let ss = RepositorySnapshots::restore(path_to_working, path_to_repository).expect("Failed to restore");
@@ -515,7 +514,7 @@ mod tests {
         
         let fs = LocalFileStorage::initialize(path_to_repository).expect("Failed to init fs");
         {
-            let mut ss = RepositorySnapshots::initialize(path_to_repository).expect("Failed to Initialize Snapshot Storage");
+            let mut ss = RepositorySnapshots::initialize(path_to_repository, path_to_working).expect("Failed to Initialize Snapshot Storage");
             ss.take_snapshot(None, "A Message", file_list, path_to_repository, path_to_working, &fs).expect("Failed to take snapshot");
         }
         let ss = RepositorySnapshots::restore(path_to_working, path_to_repository).expect("Failed to restore");
@@ -546,7 +545,7 @@ mod tests {
         
         let fs = LocalFileStorage::initialize(path_to_repository).expect("Failed to init fs");
         {
-            let mut ss = RepositorySnapshots::initialize(path_to_repository).expect("Failed to Initialize Snapshot Storage");
+            let mut ss = RepositorySnapshots::initialize(path_to_repository, path_to_working).expect("Failed to Initialize Snapshot Storage");
             let parent_id = ss.take_snapshot(None, "A parent snapshot", file_list, path_to_repository, path_to_working, &fs).expect("Failed to take snapshot");
             ss.take_snapshot(Some(parent_id), "A child snapshot", file_list3, path_to_repository, path_to_working, &fs).expect("Failed to take child snapshot");
         }
@@ -591,7 +590,7 @@ mod tests {
         let path_to_repository = ts2.get_path();
         let path_to_working = ts.get_path();
         let fs = LocalFileStorage::initialize(path_to_repository).expect("Failed to init fs");
-        let mut ss = RepositorySnapshots::initialize(path_to_repository).expect("Failed to Initialize Snapshot Storage");
+        let mut ss = RepositorySnapshots::initialize(path_to_repository, path_to_working).expect("Failed to Initialize Snapshot Storage");
         let old = ss.take_snapshot(None, "A Message", file_list, path_to_repository, path_to_working, &fs).expect("Failed to take snapshot");
         let recent = ss.get_latest_snapshot().expect("Didn't find a latest snapshot");
         assert_eq!(old, recent);
@@ -611,7 +610,7 @@ mod tests {
         let path_to_working = ts.get_path();
         
         let fs = LocalFileStorage::initialize(path_to_repository).expect("Failed to init fs");
-        let mut ss = RepositorySnapshots::initialize(path_to_repository).expect("Failed to Initialize Snapshot Storage");
+        let mut ss = RepositorySnapshots::initialize(path_to_repository, path_to_working).expect("Failed to Initialize Snapshot Storage");
         let parent_id = ss.take_snapshot(None, "A parent snapshot", file_list, path_to_repository, path_to_working, &fs).expect("Failed to take snapshot");
         let child_id = ss.take_snapshot(Some(parent_id), "A child snapshot", file_list3, path_to_repository, path_to_working, &fs).expect("Failed to take child snapshot");
         let end_snapshots = ss.get_end_snapshots().expect("Failed to obtain end snapshots");
@@ -631,7 +630,7 @@ mod tests {
         let path_to_working = ts.get_path();
         
         let fs = LocalFileStorage::initialize(path_to_repository).expect("Failed to init fs");
-        let mut ss = RepositorySnapshots::initialize(path_to_repository).expect("Failed to Initialize Snapshot Storage");
+        let mut ss = RepositorySnapshots::initialize(path_to_repository, path_to_working).expect("Failed to Initialize Snapshot Storage");
         let parent_id = ss.take_snapshot(None, "A parent snapshot", file_list, path_to_repository, path_to_working, &fs).expect("Failed to take snapshot");
         let root_snapshots = ss.get_root_snapshots().expect("Failed to obtain root snapshots");
         assert_eq!(root_snapshots[0], parent_id);

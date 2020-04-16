@@ -210,7 +210,7 @@ mod tests {
         assert_eq!(&id, result.get_hash());
     }
 
-        //
+    //
     #[test]
     fn test_snapshot_id() {
         use rand::seq::SliceRandom;
@@ -223,7 +223,7 @@ mod tests {
         let mut shuffled_list = hashed_files.clone();
         let mut rng = rand::thread_rng();
         shuffled_list.shuffle(&mut rng);
-        // This test can fail randomly if the list is shuffled to the same order
+        // BUG: This test can fail randomly if the list is shuffled to the same order
         assert_ne!(hashed_files, shuffled_list);
         // Unshuffled list should produce same hash id as shuffled list
         let first_id = Hash::generate_snapshot_id("message", hashed_files.as_mut_slice());
@@ -247,10 +247,10 @@ mod tests {
         let child_id = Hash::generate_snapshot_id("diddly", hashed_files2.as_mut_slice());
         let child = Snapshot::new(child_id.clone(), String::from("diddly"), hashed_files2, Vec::new(), Some(parent_id));
         parent.add_child(child_id.clone());
+        // file_storage is responsible for actually storing user data locally
         let file_storage = LocalFileStorage::initialize(path_to_repository).expect("Failed to initialize local storage");
         let path_to_parent_snapshot = path_to_repository.join(String::from(parent.get_hash()));
         let path_to_child_snapshot = path_to_repository.join(String::from(child.get_hash()));
-        
         
         RepositoryStorage::store(parent, path_to_parent_snapshot.as_path(), path_to_working, path_to_working).expect("Failed to write parent snapshot");
         RepositoryStorage::store(child, path_to_child_snapshot.as_path(), path_to_working, path_to_working).expect("Failed to write child snapshot");

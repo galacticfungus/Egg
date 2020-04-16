@@ -63,3 +63,24 @@ fn egg_get_recent_snapshot_test() {
     //     assert_eq!(original_absolute.as_path(), file.path());
     // }
 }
+
+#[test]
+fn egg_take_snapshot_with_child_test() {
+    let ts = TestSpace::new().allow_cleanup(false);
+    let mut ts2 = ts.create_child();
+    let mut files_to_snapshot = ts2.create_random_files(2, 4096);
+    let working_path = ts.get_path();
+    let mut repo = egg::Repository::create_repository(working_path).expect("Failed to create repository");
+    println!("working: {}", working_path.display());
+    for file in &files_to_snapshot {
+        println!("file: {}", file.display());
+    }
+    let snapshot_id = repo.take_snapshot(None, "Test Message", files_to_snapshot.clone()).expect("Failed to take snapshot");
+    let mut new_files = ts2.create_random_files(2, 2048);
+    files_to_snapshot.append(&mut new_files);
+    let child_id = repo.take_snapshot(Some(snapshot_id), "A child snapshot", files_to_snapshot).expect("Failed to get child snapshot");
+    let child_snapshot = repo.get_snapshot(child_id).expect("Child not found");
+    for file in child_snapshot.get_files() {
+        println!("{:?}", file.path());
+    }
+}

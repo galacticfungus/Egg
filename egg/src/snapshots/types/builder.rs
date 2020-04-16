@@ -15,6 +15,7 @@ pub(crate) struct SnapshotBuilder {
 impl SnapshotBuilder {
     pub fn change(snapshot: Snapshot) -> SnapshotBuilder {
         // TODO: When a snapshot is changed a new hash must be calculated and that hash distributed to its children and parents
+        // TODO: But this is only a partial fix ?
         SnapshotBuilder::from(snapshot)
     }
 

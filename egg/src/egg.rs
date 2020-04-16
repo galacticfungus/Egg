@@ -298,7 +298,7 @@ impl Repository {
         Repository::write_version_file(version_path.as_path())?;
         //TODO: Move these initialization calls to the create_repository function
         // Initialize a new snapshot file
-        let snapshot_storage = RepositorySnapshots::initialize(repository_path.as_path())?;
+        let snapshot_storage = RepositorySnapshots::initialize(repository_path.as_path(), path.as_path())?;
 
         let data = LocalFileStorage::initialize(repository_path.as_path())?;
         Ok(Repository {

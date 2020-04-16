@@ -47,7 +47,7 @@ impl SnapshotIndex {
         // If an index is already associated with this hash panic as its a bug
         if let Some(SnapshotId::Indexed(_, _)) = self.hash_index.get(&hash) {
             panic!("Associating a hash with an index that is already associated with an index");
-            // This is really only a problem if the two indexes aren't the same
+            // This is really only a problem if the two indexes aren't the same but it still shouldn't happen
         }
         // let hash_clone = hash.clone();
         self.hash_index.insert(hash.clone(), SnapshotId::Indexed(index, hash));

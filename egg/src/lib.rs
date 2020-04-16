@@ -10,4 +10,4 @@ mod egg;
 
 pub use crate::egg::Repository;
 pub use crate::snapshots::types::SnapshotId;
-pub use crate::atomic::AtomicUpdate;
+pub use atomic::AtomicUpdate;

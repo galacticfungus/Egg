@@ -32,6 +32,12 @@ impl Error {
             kind: ErrorKind::FileOperation(caused_by, ErrorContext::new()),
         }
     }
+    // Invalid Operation
+    pub fn invalid_parameter(caused_by: Option<UnderlyingError>) -> Error {
+        Error {
+            kind: ErrorKind::InvalidParameter(caused_by, ErrorContext::new()),
+        }
+    }
     
     pub fn repository_not_found() -> Error {
         Error {
@@ -49,6 +55,7 @@ impl Error {
             ErrorKind::FileOperation(_, ref mut context) => context,
             ErrorKind::RepositoryNotFound(ref mut context) => context,
             ErrorKind::InvalidRepository(ref mut context) => context,
+            ErrorKind::InvalidParameter(_, ref mut context) => context,
         }
     }
 
@@ -59,6 +66,7 @@ impl Error {
             ErrorKind::FileOperation(_, ref context) => context,
             ErrorKind::RepositoryNotFound(ref context) => context,
             ErrorKind::InvalidRepository(ref context) => context,
+            ErrorKind::InvalidParameter(_, ref context) => context,
         }
     }
 
@@ -105,6 +113,7 @@ impl std::error::Error for Error {
             ErrorKind::WriteFailed(ref error, _) => error.as_ref().map(|e| e.get_error()),
             ErrorKind::RepositoryNotFound(_) => None,
             ErrorKind::InvalidRepository(_) => None,
+            ErrorKind::InvalidParameter(ref error, _) => error.as_ref().map(|e| e.get_error()),
         }
     }
 }

@@ -35,6 +35,7 @@ impl LocalFileStorage {
 
     pub fn initialize(repository_path: &path::Path) -> Result<LocalFileStorage> {
         // TODO: Need additional sensible defaults
+        // TODO: This should be using atomic
         let path_to_file = repository_path.join(LocalFileStorage::FILE_NAME);
         let file = match fs::OpenOptions::new().create_new(true).write(true).open(path_to_file.as_path()) {
             Ok(file) => file,
@@ -92,17 +93,18 @@ impl LocalFileStorage {
 
 impl LocalFileStorage {
     /// Queues all the files associated with a snapshot to be stored
-    pub fn store_snapshot(&self, snapshot: &Snapshot, atomic: &mut AtomicUpdate) {
+    pub fn store_snapshot(&self, snapshot: &Snapshot, atomic: &mut AtomicUpdate) -> Result<()> {
         for file_to_snapshot in snapshot.get_files() {
             let hash = file_to_snapshot.hash();
             if self.is_file_stored(hash) == false {
                 let file_name = String::from(hash);
-                let path_to_store = atomic.queue_store(file_name);
+                let path_to_store = atomic.queue_store(file_name).map_err(|err| err.add_generic_message("During a store snapshot operation"))?;
                 if let Err(error) = self.store_file(file_to_snapshot.path(), path_to_store.as_path()) {
                     unimplemented!();
                 }
             }
         }
+        Ok(())
     }
 
     /// TODO: Can this be a private method

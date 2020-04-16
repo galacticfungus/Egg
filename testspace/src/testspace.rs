@@ -53,6 +53,9 @@ impl TestSpace {
     });
     // History must be recorded in the function calling this one, 
     // FIXME: Probably should record the directory being created in the function that does the actual creating
+    // IDEA: An idea
+    // BUG: A bug
+    // TODO: A todo
     path_to_dir
   }
 }
