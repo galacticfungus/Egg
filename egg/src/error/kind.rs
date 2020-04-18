@@ -27,7 +27,7 @@ impl std::fmt::Display for ErrorKind {
             ErrorKind::WriteFailed(_, context) => write!(f, "Writing data to the repository has failed\n{}", context),
             ErrorKind::RepositoryNotFound(context) => write!(f, "No repository was found\n{}", context),
             ErrorKind::InvalidRepository(context) => write!(f, "Repository appears to be in an invalid state\n{}", context),
-            ErrorKind::InvalidParameter(error, context) => write!(f, "Invalid parameter was passed or used inside egg\n{}", context),
+            ErrorKind::InvalidParameter(_, context) => write!(f, "Invalid parameter was passed or used inside egg\n{}", context),
         }
     }
 }
@@ -40,7 +40,7 @@ impl std::fmt::Debug for ErrorKind {
             ErrorKind::WriteFailed(error, context) => write!(f, "Writing data to the repository has failed\nThe underlying error was {:?}\n{}", error, context),
             ErrorKind::RepositoryNotFound(context) => write!(f, "No repository was found\n{}", context),
             ErrorKind::InvalidRepository(context) => write!(f, "Repository appears to be in an invalid state\n{}", context),
-            ErrorKind::InvalidParameter(error, context) => write!(f, "An invalid parameter was used or created inside egg\n{}", context),
+            ErrorKind::InvalidParameter(error, context) => write!(f, "An invalid parameter was used or created inside egg, error was {:?}\n{}", error, context),
         }
     }
 }

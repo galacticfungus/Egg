@@ -3,12 +3,9 @@ use crate::snapshots::types::{SnapshotId, Snapshot};
 use crate::hash::Hash;
 use crate::error::Error;
 
-type Result<T> = std::result::Result<T, Error>;
+use super::SnapshotIndex;
 
-#[derive(Debug)]
-pub(crate) struct SnapshotIndex {
-    hash_index: HashMap<Hash, SnapshotId>,
-}
+type Result<T> = std::result::Result<T, Error>;
 
 impl SnapshotIndex {
     pub fn init() -> SnapshotIndex {
@@ -40,6 +37,7 @@ impl SnapshotIndex {
             // Adding a hash to the index that is already in there does nothing
             self.hash_index.insert(hash.clone(), SnapshotId::NotLoaded(hash.clone()));
         }
+        // If the hash is already considered loaded we have nothing to do
     }
 
     // Associates a hash with an index, will panic if the hash is already associated with an index

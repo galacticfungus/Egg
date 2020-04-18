@@ -1,4 +1,3 @@
-use std::path;
 use std::fmt;
 use super::{ErrorContext, MessageType, ErrorKind, UnderlyingError};
 
@@ -120,7 +119,6 @@ impl std::error::Error for Error {
 
 #[cfg(test)]
 mod tests {
-    use super::{Error};
 
     #[test]
     fn test_basic_error() {

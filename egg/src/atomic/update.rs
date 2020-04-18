@@ -125,13 +125,12 @@ impl<'a> AtomicUpdate<'a> {
         self.process_fourth_stage()?;
         // Stage 5 - delete all bad files
         self.process_fifth_stage()?;
-        
         Ok(())
     }
 
     fn process_first_stage(&self) -> Result<(), Error> {
         for job in self.atomic_jobs.as_slice() {
-            let file_name = job.get_filename()?;
+            let file_name = job.get_filename().map_err(|err| err.add_generic_message("During a stage one atomic operation"))?;
             match job {
                 FileOperation::Create(_) => {
                     // Move from working to complete
@@ -145,14 +144,14 @@ impl<'a> AtomicUpdate<'a> {
                 },
                 FileOperation::Replace(_) => {
                     // Move from working to complete
-                    if let Err(error) = fs::rename(self.path_to_replace_working.join(file_name), self.path_to_replace_complete.join(file_name)) {
-                        unimplemented!();
-                    }
+                    fs::rename(self.path_to_replace_working.join(file_name), self.path_to_replace_complete.join(file_name))
+                        .map_err(|err| Error::file_error(Some(UnderlyingError::from(err)))
+                            .add_generic_message("File rename failed during a stage one replace operation"))?;
                 },
                 FileOperation::Store(_) => {
-                    if let Err(error) = fs::rename(self.path_to_store_working.join(file_name), self.path_to_store_complete.join(file_name)) {
-                        unimplemented!();
-                    }
+                    fs::rename(self.path_to_store_working.join(file_name), self.path_to_store_complete.join(file_name))
+                        .map_err(|err| Error::file_error(Some(UnderlyingError::from(err)))
+                            .add_generic_message("File rename failed during a stage one store operation"))?;
                 },
             }
         }
@@ -168,10 +167,9 @@ impl<'a> AtomicUpdate<'a> {
                 FileOperation::Replace(path_to_file) => {
                     // Move from current to previous
                     let file_name = job.get_filename()?;
-                    if let Err(error) = fs::rename(path_to_file, self.path_to_replace_previous.join(file_name)) {
-                        println!("Failed to rename from {:?} to {:?}", path_to_file, self.path_to_replace_previous.join(file_name));
-                        unimplemented!();
-                    }
+                    fs::rename(path_to_file, self.path_to_replace_previous.join(file_name))
+                        .map_err(|err| Error::file_error(Some(UnderlyingError::from(err)))
+                            .add_generic_message("File rename failed during a stage two replace operation"))?;
                 },
                 FileOperation::Store(_) => {
                     // No op since there is no file we are replacing
@@ -191,15 +189,15 @@ impl<'a> AtomicUpdate<'a> {
             match job {
                 FileOperation::Create(path_to_file) => {
                     // Move from complete to current
-                    if let Err(error) = fs::rename(self.path_to_create_complete.join(file_name), path_to_file) {
-                        unimplemented!();
-                    }
+                    fs::rename(self.path_to_create_complete.join(file_name), path_to_file)
+                        .map_err(|err| Error::file_error(Some(UnderlyingError::from(err)))
+                            .add_generic_message("File rename failed during a stage three create operation"))?;
                 },
                 FileOperation::Replace(path_to_file) => {
                     // Move from complete to current
-                    if let Err(error) = fs::rename(self.path_to_replace_complete.join(file_name), path_to_file) {
-                        unimplemented!();
-                    }
+                    fs::rename(self.path_to_replace_complete.join(file_name), path_to_file)
+                        .map_err(|err| Error::file_error(Some(UnderlyingError::from(err)))
+                            .add_generic_message("File rename failed during a stage three replace operation"))?;
                 },
                 FileOperation::Store(_) => {
                     // FIXME: The original files path is not the same as the destination path in the case of storage
@@ -207,9 +205,10 @@ impl<'a> AtomicUpdate<'a> {
                     use crate::storage::LocalFileStorage;
                     let path_to_storage = self.path_to_repository.join(LocalFileStorage::DIRECTORY).join(file_name);
                     let path_to_complete_file = self.path_to_store_complete.join(file_name);
-                    if let Err(error) = fs::rename(path_to_complete_file, path_to_storage.as_path()) {
-                        unimplemented!();
-                    }
+                    fs::rename(path_to_complete_file, path_to_storage.as_path())
+                        .map_err(|err| Error::file_error(Some(UnderlyingError::from(err)))
+                            .add_generic_message("File rename failed during a stage three store operation"))?;
+                    
                 },
             }
         }
@@ -227,9 +226,9 @@ impl<'a> AtomicUpdate<'a> {
                 FileOperation::Replace(_) => {
                     // Move from previous to remove
                     let file_name = job.get_filename()?;
-                    if let Err(error) = fs::rename(self.path_to_replace_previous.join(file_name), self.path_to_replace_remove.join(file_name)) {
-                        unimplemented!();
-                    }
+                    fs::rename(self.path_to_replace_previous.join(file_name), self.path_to_replace_remove.join(file_name))
+                        .map_err(|err| Error::file_error(Some(UnderlyingError::from(err)))
+                            .add_generic_message("Rename failed during the fourth stage of an atomic operation"))?;
                 },
                 FileOperation::Store(_) => {
                     // Nothing to remove so no op
@@ -250,9 +249,9 @@ impl<'a> AtomicUpdate<'a> {
                 FileOperation::Replace(_) => {
                     let file_name = job.get_filename()?;
                     // Remove the file that was replaced
-                    if let Err(error) = fs::remove_file(self.path_to_replace_remove.join(file_name)) {
-                        unimplemented!();
-                    }
+                    fs::remove_file(self.path_to_replace_remove.join(file_name))
+                        .map_err(|err| Error::file_error(Some(UnderlyingError::from(err)))
+                            .add_generic_message("Remove file failed during a stage five replace operation"))?;
                 },
                 FileOperation::Store(_) => {
                     // Nothing to remove so no op
@@ -268,9 +267,6 @@ impl<'a> AtomicUpdate<'a> {
 mod tests {
     use testspace::TestSpace;
     use super::{AtomicUpdate, AtomicLocation};
-    
-    use std::path;
-    use std::fmt::{self, Display};
 
     #[test]
     fn test_first_stage_queue_create() {

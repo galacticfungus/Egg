@@ -19,7 +19,6 @@ enum FileOperation {
 // TODO: AtomicUpdate needs to support versioning since a repository might be updated with an old interrupted operation
 /// Responsible for making sure that all files are updated atomically
 pub struct AtomicUpdate<'a> {
-    // All paths are processed relative to the repository path
     atomic_jobs: Vec<FileOperation>,
     path_to_working: &'a path::Path,
     path_to_repository: &'a path::Path,

@@ -2,60 +2,8 @@ use std::path;
 use std::fmt::Display;
 
 use crate::hash::Hash;
-
-#[cfg_attr(test, derive(Clone, PartialEq))]
-#[derive(Debug)]
-/// Represents all the information that is stored about a file being placed in a snapshot
-pub struct FileMetadata {
-    path: path::PathBuf,
-    file_size: u64,
-    modified_time: u128,
-    hash: Hash,
-}
-
-impl FileMetadata {
-    pub fn new(hash: Hash, file_size: u64, path: path::PathBuf, modified_time: u128) -> FileMetadata {
-        FileMetadata {
-                hash,
-                path,
-                file_size,
-                modified_time,
-        }
-    }
-
-    pub fn hash(&self) -> &Hash {
-        &self.hash
-    }
-
-    pub fn filesize(&self) -> u64 {
-        self.file_size
-    }
-
-    pub fn modified_time(&self) -> u128 {
-        self.modified_time
-    }
-
-    pub fn path(&self) -> &path::Path {
-        self.path.as_path()
-    }
-}
-
-impl From<&FileMetadata> for String {
-    fn from(metadata: &FileMetadata) -> Self {
-        format!("{} - hash {}/{} bytes",metadata.path().display(), metadata.hash, metadata.file_size)
-    }
-}
-
-#[cfg_attr(test, derive(Clone, PartialEq))]
-#[derive(Debug)]
-pub struct Snapshot {
-    id: Hash,
-    message: std::string::String,
-    // FIXME: This actually needs to be a list since snapshots may be merged?
-    parent: Option<Hash>,               // The snapshot that this snapshot is based off
-    children: Vec<Hash>,                // Snapshots that this snapshot serves as the basis
-    files: Vec<FileMetadata>,  // Each path has a hash associated with it, in addition to a file size and a modification time
-}
+use super::FileMetadata;
+use super::Snapshot;
 
 // TODO: A snapshot must record its history and its ID be based on its history as well as current values
 
@@ -85,15 +33,11 @@ impl Snapshot {
         let Snapshot {id, parent, children, files, message} = self;
         (id, children, files, parent, message)
     }
-}
 
-impl Snapshot {
     pub(crate) fn add_child(&mut self, hash: Hash) {
         self.children.push(hash);
     }
-}
 
-impl Snapshot {
     pub fn get_message(&self) -> &str {
         self.message.as_str()
     }

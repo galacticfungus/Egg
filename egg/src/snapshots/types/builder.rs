@@ -1,17 +1,12 @@
 use std::string::String;
 use crate::hash::Hash;
 use super::{Snapshot, FileMetadata};
-use blake2::{self, Blake2b, Digest};
+use blake2::{self, Digest};
 use std::path;
+use super::SnapshotBuilder;
 
-pub(crate) struct SnapshotBuilder {
-    message: Option<String>,
-    id: Option<Hash>,
-    files: Vec<FileMetadata>,
-    children: Vec<Hash>,
-    parent: Option<Hash>,
-}
 
+// TODO: SnapshotBuilder should return self
 impl SnapshotBuilder {
     pub fn change(snapshot: Snapshot) -> SnapshotBuilder {
         // TODO: When a snapshot is changed a new hash must be calculated and that hash distributed to its children and parents

@@ -10,14 +10,13 @@ use types::{Snapshot, SnapshotId, FileMetadata};
 use crate::storage;
 use crate::storage::LocalFileStorage;
 use crate::storage::RepositoryStorage;
+use std::collections::HashMap;
+
 use crate::hash::Hash;
 use crate::error::Error;
 use crate::AtomicUpdate;
 use crate::working::WorkingDirectory;
-use index::SnapshotIndex;
 use types::SnapshotBuilder;
-
-type Result<T> = std::result::Result<T, Error>;
 
 // Defines a public interface for the snapshot system, used to store and load snapshots from the repository
 #[derive(Debug)]
@@ -27,9 +26,14 @@ pub(crate) struct RepositorySnapshots {
     snapshots: Vec<Snapshot>,
 }
 
+#[derive(Debug)]
+pub struct SnapshotIndex {
+    hash_index: HashMap<Hash, SnapshotId>,
+}
+
 impl RepositorySnapshots {
     /// Creates a new snapshot system in a repository that is being created
-    pub(crate) fn initialize(base_path: &path::Path, working_path: &path::Path) -> Result<RepositorySnapshots> {
+    pub(crate) fn initialize(base_path: &path::Path, working_path: &path::Path) -> Result<RepositorySnapshots, Error> {
         // initialize state - this requires a path to an initial snapshot data file
         let state = StorageState::initialize(base_path)?;
         let index = SnapshotIndex::init();
@@ -45,7 +49,7 @@ impl RepositorySnapshots {
     }
 
     /// Loads the current state of the snapshot system from the repository
-    pub(crate) fn restore(working_path: &path::Path, repository_path: &path::Path) -> Result<RepositorySnapshots> {
+    pub(crate) fn restore(working_path: &path::Path, repository_path: &path::Path) -> Result<RepositorySnapshots, Error> {
         // TODO: Check that the snapshot system was left in a valid state
         // Restore State
         let state = match StorageState::load_state(repository_path) {
@@ -122,7 +126,7 @@ impl RepositorySnapshots {
     // TODO: Track files that have been snapshot
     // TODO: Change current snapshot to parent snapshot - current snapshot should be independent from snapshot creation
     /// Create a snapshot
-    pub fn take_snapshot<S: Into<String>>(&mut self, parent_snapshot: Option<SnapshotId>, snapshot_message: S, files_to_snapshot: Vec<path::PathBuf>, path_to_repository: &path::Path, path_to_working: &path::Path, file_storage: &LocalFileStorage) -> Result<SnapshotId> {
+    pub fn take_snapshot<S: Into<String>>(&mut self, parent_snapshot: Option<SnapshotId>, snapshot_message: S, files_to_snapshot: Vec<path::PathBuf>, path_to_repository: &path::Path, path_to_working: &path::Path, file_storage: &LocalFileStorage) -> Result<SnapshotId, Error> {
         // TODO: Add support for inserting a snapshot in between other snapshots?
         // TODO: Add support for multiple children
         // TODO: All files being changed must be updated at the same time
@@ -135,7 +139,7 @@ impl RepositorySnapshots {
         }
     }
     /// Take a snapshot that has no parent
-    fn take_root_snapshot(&mut self, snapshot_message: String, files_to_snapshot: Vec<path::PathBuf>, path_to_repository: &path::Path, path_to_working: &path::Path, file_storage: &LocalFileStorage) -> Result<SnapshotId> {
+    fn take_root_snapshot(&mut self, snapshot_message: String, files_to_snapshot: Vec<path::PathBuf>, path_to_repository: &path::Path, path_to_working: &path::Path, file_storage: &LocalFileStorage) -> Result<SnapshotId, Error> {
         let mut builder = SnapshotBuilder::new();
         // Get the files that are going to be included in the snapshot
         match WorkingDirectory::create_metadata_list(files_to_snapshot) {
@@ -163,7 +167,7 @@ impl RepositorySnapshots {
     }
 
     /// Take a snapshot that has a parent
-    fn take_child_snapshot(&mut self, parent_snapshot: SnapshotId, snapshot_message: String, files_to_snapshot: Vec<path::PathBuf>, path_to_repository: &path::Path, path_to_working: &path::Path, file_storage: &LocalFileStorage) -> Result<SnapshotId> {
+    fn take_child_snapshot(&mut self, parent_snapshot: SnapshotId, snapshot_message: String, files_to_snapshot: Vec<path::PathBuf>, path_to_repository: &path::Path, path_to_working: &path::Path, file_storage: &LocalFileStorage) -> Result<SnapshotId, Error> {
         let mut builder = SnapshotBuilder::new();
         let mut file_iterator = files_to_snapshot.iter();
         let files_valid = file_iterator.all(|path| {
@@ -192,7 +196,7 @@ impl RepositorySnapshots {
         // The parent needs to be modified so that it knows about its new child
         println!("Modifying the parent snapshot");
         // TODO: Check for cyclic references - ie parent points to itself 
-        let parent_snapshot = self.get_mut_snapshot_by_hash(&parent_hash, path_to_repository, path_to_working);
+        let parent_snapshot = self.get_mut_snapshot_by_hash(&parent_hash, path_to_repository, path_to_working).map_err(|err| err.add_generic_message("While taking a snapshot that is a child of another snapshot"))?;
         println!("Parent snapshot is {}", parent_snapshot);
         // Adjust the snapshot record
         parent_snapshot.add_child(snapshot.get_hash().clone());
@@ -214,7 +218,7 @@ impl RepositorySnapshots {
     }
     
     // Updates the snapshot state for a child snapshot
-    fn update_state(&mut self, atomic: &mut AtomicUpdate, snapshot: &Snapshot, new_parent: bool) -> Result<()> {
+    fn update_state(&mut self, atomic: &mut AtomicUpdate, snapshot: &Snapshot, new_parent: bool) -> Result<(), Error> {
         self.state.change_state(atomic, |state_data| {
             if let Some(parent) = snapshot.get_parent() {
                 // Remove the parent as a end node if it is a new parent, as long as we don't insert snapshots between snapshots this will work
@@ -238,7 +242,7 @@ impl RepositorySnapshots {
     }
     // TODO: Rename to update_repository
     /// Updates the index of the snapshot, adds the snapshot to the list of loaded snapshots and lets AtomicUpdate know that all operations have been queued
-    fn finish_taking_snapshot(&mut self, snapshot: Snapshot, atomic: AtomicUpdate) -> Result<SnapshotId> {
+    fn finish_taking_snapshot(&mut self, snapshot: Snapshot, atomic: AtomicUpdate) -> Result<SnapshotId, Error> {
         // TODO: Move to its own function
         let RepositorySnapshots { ref mut snapshots, index: ref mut snapshot_index, .. } = self;
         // Update index
@@ -255,22 +259,29 @@ impl RepositorySnapshots {
     }
 
     // TODO: Private function - all other methods must use an ID?
-    pub fn get_mut_snapshot_by_hash(&mut self, hash: &Hash, path_to_repository: &path::Path, path_to_working: &path::Path) -> &mut Snapshot {
-        let RepositorySnapshots { ref mut snapshots, ref mut state, index: ref mut snapshot_index, } = self;
+    pub fn get_mut_snapshot_by_hash(&mut self, hash: &Hash, path_to_repository: &path::Path, path_to_working: &path::Path) -> Result<&mut Snapshot, Error> {
+        let RepositorySnapshots { ref mut snapshots, index: ref mut snapshot_index, ..} = self;
+        // Get the ID of the hash if one exists
         match snapshot_index.get_id(hash) {
+            // The hash exists and is loaded
             Some(SnapshotId::Indexed(index, _)) => {
                 // Get snapshot from vector
-                snapshots.get_mut(index).unwrap()
+                snapshots.get_mut(index).ok_or(err)
             },
+            // The hash exists but is not loaded
             Some(SnapshotId::NotLoaded(_)) => {
-                if let Err(error) = RepositorySnapshots::load_snapshot(snapshots, snapshot_index, &hash, path_to_repository, path_to_working) {
-                    unimplemented!();
-                }
-                match snapshot_index.get_id(hash) {
-                    Some(SnapshotId::Indexed(parent_index, _)) => snapshots.get_mut(parent_index).unwrap(),
-                    _ => unreachable!("A snapshot returned an unloaded ID after being loaded, Hash was {}, Snapshots was {:?} and index was {:?}", hash, snapshots, snapshot_index),
+                // Attempt to load the snapshot retrieving its id
+                // TODO: This needs to be reworked, the whole load_snapshot as a static method
+                RepositorySnapshots::load_snapshot(snapshots, snapshot_index, &hash, path_to_repository, path_to_working).map_err(|err| err.add_generic_message("While retrieving a snapshot by hash"))?;
+                // FIXME: The index may be responsible for loading a snapshot if it isn't indexed
+                let id = snapshot_index.get_id(hash).ok_or(err)?;
+                match id {
+                    SnapshotId::Indexed(parent_index, _) => snapshots.get_mut(parent_index).ok_or( ),
+                    // TODO: Invalid repository or parameter - a snapshot was loaded but after being loaded its ID still reported it as being unloaded
+                    SnapshotId::NotLoaded(hash) => Err(Error::)
                 }
             },
+            // No such hash exists
             None => unreachable!("The hash of a snapshot's parent does not exist in the repository"),
         }
     }
@@ -318,15 +329,14 @@ impl RepositorySnapshots {
 
     /// Loads a snapshot from storage by using the index to locate it, it also updates the index so that it points to the new loaded snapshot
     // TODO: Rename this as it really loads the snapshot and adds it to the vector
-    pub fn load_snapshot(snapshots: &mut Vec<Snapshot>, index: &mut SnapshotIndex, hash: &Hash, path_to_repository: &path::Path, path_to_working: &path::Path) -> Result<()> {
+    pub fn load_snapshot(snapshots: &mut Vec<Snapshot>, index: &mut SnapshotIndex, hash: &Hash, path_to_repository: &path::Path, path_to_working: &path::Path) -> Result<(), Error> {
         // TODO: Confirm that the snapshot is SnapshotId::Hash here before reading the snapshot
         
         let file_name = String::from(hash);
         let path_to_snapshot = path_to_repository.join(file_name);
-        let snapshot = match RepositoryStorage::restore_snapshot(path_to_snapshot.as_path(), path_to_working) {
-            Ok(snapshot) => snapshot,
-            Err(error) => unimplemented!(),
-        };
+        let snapshot = RepositoryStorage::restore_snapshot(path_to_snapshot.as_path(), path_to_working)
+            .map_err(|err| err.add_generic_message("While restoring a snapshot"))?;
+        
         if let Some(SnapshotId::Indexed(_,_)) = index.get_id(snapshot.get_hash()) {
             // If the hash is already indexed then the snapshot must already be in the index
             unreachable!("Snapshot already indexed when trying to index it again")
@@ -334,9 +344,8 @@ impl RepositorySnapshots {
         // Associate the hash with an index
         let snapshot_index = snapshots.len();
         // Add child and parent hashes to the index and associate this snapshot with an index
-        if let Err(error) = index.index_snapshot(&snapshot, snapshot_index) {
-            unimplemented!();
-        }
+        index.index_snapshot(&snapshot, snapshot_index)
+            .map_err(|err| err.add_generic_message("While loading a snapshot"))?;
         snapshots.push(snapshot);
         Ok(())
     }
@@ -354,7 +363,7 @@ impl RepositorySnapshots {
     }
 
     // Returns all the snapshots that have no parent - meaning that they start a chain of snapshots (ie start nodes)
-    pub fn get_root_snapshots(&self) -> Result<Vec<SnapshotId>> {
+    pub fn get_root_snapshots(&self) -> Result<Vec<SnapshotId>, Error> {
         let mut root_ids = Vec::new();
         for root_hash in self.state.get_root_snapshots() {
             let id = match self.index.get_id(root_hash) {
@@ -372,7 +381,7 @@ impl RepositorySnapshots {
     }
 
     /// Returns all the snapshots that have no children - meaning that they are the end of a list of snapshots (ie end nodes)
-    pub fn get_end_snapshots(&self) -> Result<Vec<SnapshotId>> {
+    pub fn get_end_snapshots(&self) -> Result<Vec<SnapshotId>, Error> {
         let mut end_ids = Vec::new();
         for end_hash in self.state.get_end_snapshots() {
             let id = match self.index.get_id(end_hash) {
@@ -412,7 +421,7 @@ impl RepositorySnapshots {
 
 #[cfg(test)]
 mod tests {
-    use testspace::{TestSpace};
+    use testspace::TestSpace;
     use super::RepositorySnapshots;
     use crate::snapshots::index::SnapshotIndex;
     use crate::snapshots::types::{Snapshot, SnapshotId};
@@ -645,4 +654,7 @@ mod tests {
     fn get_snapshot_by_hash_test() {
         unimplemented!()
     }
+
+    // TODO: Get end snapshots
+    // TODO: Get root snapshots
 }
