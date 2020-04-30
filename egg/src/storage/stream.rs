@@ -223,18 +223,20 @@ pub trait WriteEggExt: Write + WriteBytesExt + Seek {
     }
 
     fn write_path<P: AsRef<path::Path>>(&mut self, path_to_write: P, relative_to: &path::Path) -> Result<()> {
+        debug_assert!(relative_to.is_absolute(), "Write path was given a relative path that was not absolute");
         // Convert path to string
         let path_to_write = path_to_write.as_ref();
+        // TODO: This is not enough to enforce obtaining a relative path
         let relative_path_to_write = match path_to_write.strip_prefix(relative_to) {
             Ok(relative_path) => relative_path,
             Err(error) => { 
                 let error = Error::write_error(Some(UnderlyingError::from(error)))
-                    .add_debug_message(format!("In preparation for writing a path, A conversion failed when converting an absolute path {} into a path that is relative to {}", path_to_write.display(), relative_to.display()));
+                    .add_debug_message(format!("In preparation for writing a path, A conversion failed when converting an absolute path \"{}\" into a path that is relative to \"{}\"", path_to_write.display(), relative_to.display()));
                 return Err(error);
             }
         };
-        debug_assert_eq!(relative_path_to_write.is_relative(), true, "BUG: Path being stored was absolute: {}", relative_path_to_write.display());
-        //Convert path to string, need to use  a cross platform standard for paths, requiring any path to be UTF8 compatible does this
+        debug_assert_eq!(relative_path_to_write.is_relative(), true, "BUG: Path being stored was absolute after stripping its prefix: {}", relative_path_to_write.display());
+        //Convert path to a utf8 string - this means some paths on some OS's will not be supported but it guarentees cross platform correctness
         let path_string = match relative_path_to_write.to_str() {
             Some(converted_string) => converted_string,
             None => {

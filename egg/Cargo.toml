@@ -1,3 +1,5 @@
+[lib]
+
 [package]
 name = "egg"
 version = "0.1.2"
@@ -10,6 +12,6 @@ workspace = "../"
 byteorder = "1.3"
 rand = "0.7"
 blake2 = "0.8"
-itertools = "0.8.0"
+itertools = "0.9"
 [dev-dependencies]
 testspace = { path = "../testspace" }

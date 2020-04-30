@@ -1,6 +1,8 @@
 use testspace::TestSpace;
 use egg;
 
+// TODO: Extensive path testing ie various user inputs
+
 #[test]
 fn egg_initialize_a_simple_repository_test() {
     // Since ts always returns absolute paths
@@ -50,18 +52,12 @@ fn egg_get_recent_snapshot_test() {
         println!("file: {}", file.display());
     }
     let snapshot_id = repo.take_snapshot(None, "Test Message", files_to_snapshot.clone()).expect("Failed to take snapshot");
-    let latest_snapshot = repo.get_latest_snapshot();
+    let latest_snapshot = repo.get_latest_snapshot().expect("Failed to retrieve latest snapshot");
     match latest_snapshot {
         Some(latest_snapshot) => assert_eq!(latest_snapshot, snapshot_id),
         None => panic!("No latest snapshot was found")
     }
-    // let snapshot = repo.get_snapshot(snapshot_id).expect("Could not retrieve the snapshot that was just taken");
-    // let files_snapshotted = snapshot.get_files();
-    // for (index, file) in files_snapshotted.iter().enumerate() {
-    //     assert_eq!(file.filesize(), 4096);
-    //     let original_absolute = files_to_snapshot[index].canonicalize().expect("Failed to convert test path to an absolute path");
-    //     assert_eq!(original_absolute.as_path(), file.path());
-    // }
+    
 }
 
 #[test]

@@ -1,11 +1,10 @@
-use std::path;
 use std::fmt::Display;
 
 use crate::hash::Hash;
 use super::FileMetadata;
 use super::Snapshot;
 
-// TODO: A snapshot must record its history and its ID be based on its history as well as current values
+// TODO: A snapshot must record its history but how does this affect the id
 
 impl Display for Snapshot {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -45,7 +44,9 @@ impl Snapshot {
     pub fn get_hash(&self) -> &Hash {
         &self.id
     }
-
+    // TODO: Since snapshot is available to consumers this should probably be a SnapshotId rather than the hashes
+    // TODO: The hash functions can be renamed to parent_hash and only available inside the crate
+    // TODO: We can always create an additional type like SnapshotTree that is able to self modify to load parents or children to its data structure all within a single borrow
     pub fn get_parent(&self) -> Option<&Hash> {
         self.parent.as_ref()
     }
@@ -61,6 +62,8 @@ impl Snapshot {
 
 #[cfg(test)]
 use rand::{self, Rng};
+#[cfg(test)]
+use std::path;
 #[cfg(test)]
 use rand::distributions::{Distribution, Standard, Alphanumeric};
 #[cfg(test)]
@@ -92,7 +95,7 @@ impl Distribution<Snapshot> for Standard {
 
 #[cfg(test)]
 impl Distribution<Hash> for Standard {
-    fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> Hash {
+    fn sample<R: Rng + ?Sized>(&self, _: &mut R) -> Hash {
         // rng.gen()
         Hash::generate_random_hash()
     }

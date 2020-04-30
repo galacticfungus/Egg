@@ -1,13 +1,25 @@
 use std::path;
 use crate::hash::Hash;
-use std::fmt::Display;
 
 mod id;
 mod snapshot;
 mod builder;
 mod file;
+mod location;
 
-pub use id::SnapshotId as SnapshotId;
+#[derive(Debug, Clone, Eq, Hash)]
+pub enum SnapshotId {
+    Located(Hash, SnapshotLocation),  // Snapshot is not loaded but we know its location
+    NotLocated(Hash),                 // Snapshot supposedly exists and is referenced in the repository but we don't know its location
+    Indexed(usize, Hash),             // Snapshot is loaded and indexed in the vector of snapshots
+}
+
+#[derive(Debug, Clone, Eq, Hash, PartialEq)]
+pub enum SnapshotLocation {
+    Simple,     // The snapshot is stored in a single file located in the snapshot directory on the local repository
+    // Packed(index, path) - 
+    // NotLocal - Remote snapshot
+}
 
 pub struct SnapshotBuilder {
     message: Option<String>,
@@ -36,7 +48,7 @@ pub struct Snapshot {
     // FIXME: This actually needs to be a list since snapshots may be merged?
     parent: Option<Hash>,               // The snapshot that this snapshot is based off
     children: Vec<Hash>,                // Snapshots that this snapshot serves as the basis
-    files: Vec<FileMetadata>,  // Each path has a hash associated with it, in addition to a file size and a modification time
+    files: Vec<FileMetadata>,           // Each path has a hash associated with it, in addition to a file size and a modification time
 }
 
 // TODO: Test both snapshot and FileMetadata functionality here

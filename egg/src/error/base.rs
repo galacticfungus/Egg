@@ -8,7 +8,7 @@ pub struct Error {
 }
 
 
-// TODO: A recoverable error - ie a function return that is either a result or a response object
+// TODO: A recoverable error - ie a function return that is either a result or a response object, extension to Error trait
 
 
 impl Error {
@@ -31,16 +31,34 @@ impl Error {
             kind: ErrorKind::FileOperation(caused_by, ErrorContext::new()),
         }
     }
-    // Invalid Operation
+    // Create a invalid parameter error
     pub fn invalid_parameter(caused_by: Option<UnderlyingError>) -> Error {
         Error {
             kind: ErrorKind::InvalidParameter(caused_by, ErrorContext::new()),
         }
     }
-    
+
     pub fn repository_not_found() -> Error {
         Error {
             kind: ErrorKind::RepositoryNotFound(ErrorContext::new()),
+        }
+    }
+
+    pub fn invalid_repository() -> Error {
+        Error {
+            kind: ErrorKind::InvalidRepository(ErrorContext::new()),
+        }
+    }
+
+    pub fn invalid_state(caused_by: Option<UnderlyingError>) -> Error {
+        Error {
+            kind: ErrorKind::InvalidState(caused_by, ErrorContext::new()),
+        }
+    }
+
+    pub fn invalid_operation(caused_by: Option<UnderlyingError>) -> Error {
+        Error {
+            kind: ErrorKind::InvalidOperation(caused_by, ErrorContext::new()),
         }
     }
 }
@@ -55,6 +73,8 @@ impl Error {
             ErrorKind::RepositoryNotFound(ref mut context) => context,
             ErrorKind::InvalidRepository(ref mut context) => context,
             ErrorKind::InvalidParameter(_, ref mut context) => context,
+            ErrorKind::InvalidState(_, ref mut context) => context,
+            ErrorKind::InvalidOperation(_, ref mut context) => context,
         }
     }
 
@@ -66,6 +86,8 @@ impl Error {
             ErrorKind::RepositoryNotFound(ref context) => context,
             ErrorKind::InvalidRepository(ref context) => context,
             ErrorKind::InvalidParameter(_, ref context) => context,
+            ErrorKind::InvalidState(_, ref context) => context,
+            ErrorKind::InvalidOperation(_, ref context) => context,
         }
     }
 
@@ -113,6 +135,8 @@ impl std::error::Error for Error {
             ErrorKind::RepositoryNotFound(_) => None,
             ErrorKind::InvalidRepository(_) => None,
             ErrorKind::InvalidParameter(ref error, _) => error.as_ref().map(|e| e.get_error()),
+            ErrorKind::InvalidState(ref error, _) => error.as_ref().map(|e| e.get_error()),
+            ErrorKind::InvalidOperation(ref error, _) => error.as_ref().map(|e| e.get_error()),
         }
     }
 }

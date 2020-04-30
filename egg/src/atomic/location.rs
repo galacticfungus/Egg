@@ -5,18 +5,18 @@ impl AtomicLocation {
     pub fn get_path(&self) -> &path::Path {
         path::Path::new(self.get_str())
     }
-
+    // FIXME: This needs to be returned in two parts or as a path
     pub fn get_str(&self) -> &str {
         match self {
             AtomicLocation::Base => "atomic",
-            AtomicLocation::CreateComplete => "atomic/cc",
-            AtomicLocation::CreateWorking => "atomic/cw",
-            AtomicLocation::ReplaceWorking => "atomic/rw",
-            AtomicLocation::ReplaceComplete => "atomic/rc",
-            AtomicLocation::ReplacePrevious => "atomic/rp",
-            AtomicLocation::ReplaceRemove => "atomic/rr",
-            AtomicLocation::StoreWorking => "atomic/sw",
-            AtomicLocation::StoreComplete => "atomic/sc",
+            AtomicLocation::CreateComplete => "cc",
+            AtomicLocation::CreateWorking => "cw",
+            AtomicLocation::ReplaceWorking => "rw",
+            AtomicLocation::ReplaceComplete => "rc",
+            AtomicLocation::ReplacePrevious => "rp",
+            AtomicLocation::ReplaceRemove => "rr",
+            AtomicLocation::StoreWorking => "sw",
+            AtomicLocation::StoreComplete => "sc",
         }
     }
 }

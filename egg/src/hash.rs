@@ -8,7 +8,7 @@ use std::string::String;
 use std::io::{self, Read};
 use std::rc::Rc;
 use crate::error::{Error, UnderlyingError};
-use crate::snapshots::types::FileMetadata;
+use crate::snapshots::FileMetadata;
 
 type Result<T> = std::result::Result<T, Error>;
 impl Hash {
@@ -63,17 +63,17 @@ pub struct Hash {
 impl std::hash::Hash for Hash {
   // TODO: We already have a suitable hash so we need a pass through hasher?
     fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
-      self.bytes.hash(state);
-      // for byte in 0..64 {
-      //   self.bytes[byte].hash(state);
-      // }
+        // Use the blake2 hash as our hash for the HashMap
+        state.write(&self.bytes[.. self.bytes.len()]);
     }
 }
 
 impl std::fmt::Display for Hash {
+    // 6F72222C33B9BF85E6379189116FD60D94B07E226FCEEF434E3376D6DD845759E36111483D990DD84AFCBF67F32B6871D825E65443A7CF61D043FE1D814C02ED
+        // 6F72222C33B9BF85E6379189116FD6D94B07E226FCEEF434E3376D6DD845759E36111483D99DD84AFCBF67F32B6871D825E65443A7CF61D043FE1D814C2ED
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         for byte in self.bytes.iter() {
-        write!(f, "{:X}", byte).unwrap();
+            write!(f, "{:02X}", byte).unwrap();
         }
         Ok(())
     }
@@ -95,24 +95,24 @@ impl Hash {
         let data = Rc::get_mut(&mut bytes).expect("Creating a new hash from a byte slice failed as the Rc was already shared");
         data.clone_from_slice(source);
         Hash {
-        bytes,
+            bytes,
         }
     }
 
     ///Takes a u8 and returns the hex representation for it, only the low 4 bits of the u8 are used
     fn map_to_char(value: u8) -> char {
         match value {
-        0..=9 => {
-            //48-57 for numbers
-            char::from(value + 48)
-        },
-        10..=15 => {
-            //65-70 for letters
-            char::from(value + 55)
-        },
-        _ => {
-            unreachable!("While converting a u8 to a hex representation, a value larger than 15 was encountered which should be impossible since each byte is split into 2 sections (nibble)")
-        }
+            0..=9 => {
+                //48-57 for numbers
+                char::from(value + 48)
+            },
+            10..=15 => {
+                //65-70 for letters
+                char::from(value + 55)
+            },
+            _ => {
+                unreachable!("While converting a u8 to a hex representation, a value larger than 15 was encountered which should be impossible since each byte is split into 2 sections (nibble)")
+            }
         }
     }
 
@@ -157,9 +157,9 @@ impl Eq for Hash {}
 impl PartialEq for Hash {
     fn eq(&self, other: &Hash) -> bool {
         for index in 0..64 {
-        if self.bytes[index] !=  other.bytes[index] {
-            return false;
-        }
+            if self.bytes[index] !=  other.bytes[index] {
+                return false;
+            }
         }
         true
     }
@@ -171,7 +171,7 @@ impl From<&[u8]> for Hash {
         let mut bytes: [u8;64] = [0;64];
         bytes.copy_from_slice(byte_slice);
         Hash {
-        bytes: Rc::new(bytes),
+            bytes: Rc::new(bytes),
         }
     }
 }
@@ -186,8 +186,8 @@ impl From<Vec<u8>> for Hash {
     }
 }
 
-impl From<&'static str> for Hash {
-    fn from(raw_str: &'static str) -> Hash {
+impl From<&str> for Hash {
+    fn from(raw_str: &str) -> Hash {
         let mut bytes = Rc::new([0u8; 64]);
         debug_assert!(raw_str.len() == 128, "Invalid string length, 128 characters (2 characters per byte) are required to convert a string into a 64 byte hash, length was: {}", raw_str.len());
         let string_as_bytes = raw_str.to_ascii_uppercase();
@@ -213,25 +213,7 @@ impl From<&'static str> for Hash {
 
 impl From<String> for Hash {
     fn from(raw_string: String) -> Hash {
-        let mut bytes = Rc::new([0u8; 64]);
-        debug_assert!(raw_string.len() == 128, "Invalid string length, 128 characters (2 characters per byte) are required to convert a string into a 64 byte hash, length was : {}", raw_string.len());
-        let string_as_bytes = raw_string.to_ascii_uppercase();
-        let string_as_bytes = string_as_bytes.as_bytes();
-        let mut byte_index = 0;
-        // Since the Rc was just created its impossible for it to be shared
-        let data = Rc::get_mut(&mut bytes).expect("Failed to get mutable Rc as it was being created From<String> for Hash");
-        for byte_pair in string_as_bytes.chunks(2) {
-            debug_assert!(byte_pair[0].is_ascii_hexdigit(), "Invalid Hex digit: {}", byte_pair[0]);
-            debug_assert!(byte_pair[1].is_ascii_hexdigit(), "Invalid Hex digit: {}", byte_pair[1]);
-            let first_byte = Hash::hexdigit_to_byte(byte_pair[0]);
-            let second_byte = Hash::hexdigit_to_byte(byte_pair[1]);
-            let final_byte = (first_byte << 4) | second_byte;
-            data[byte_index] = final_byte;
-            byte_index += 1;
-        }
-        Hash {
-        bytes,
-        }
+        Hash::from(raw_string.as_str())
     }
 }
 
@@ -240,36 +222,29 @@ impl From<&Hash> for String {
         let mut hash_string = String::with_capacity(hash.bytes.len() * 2);
         // Get a slice to underlying bytes
         let hash_bytes = &(*hash.bytes);
-        for index in 0..64 {
+        for index in 0..hash.bytes.len() {
             // Every byte is two hex digits
             let second = hash_bytes[index] & 0b0000_1111u8; //Grab the low 4 bits
             let first = hash_bytes[index] >> 4 & 0b0000_1111u8; //Grab the high 4 bits
             hash_string.push(Hash::map_to_char(first));
             hash_string.push(Hash::map_to_char(second));
         }
+        debug_assert!(hash_string.len() == 128);
         hash_string
     }
+    // 6F72222C33B9BF85E6379189116FD60D94B07E226FCEEF434E3376D6DD845759E36111483D990DD84AFCBF67F32B6871D825E65443A7CF61D043FE1D814C02ED
+    // 6F72222C33B9BF85E6379189116FD6-D94B07E226FCEEF434E3376D6DD845759E36111483D99-DD84AFCBF67F32B6871D825E65443A7CF61D043FE1D814C-2ED
 }
 
 impl From<Hash> for String {
     fn from(hash: Hash) -> Self {
-        let mut hash_string = String::with_capacity(hash.bytes.len() * 2);
-        // Get a slice to underlying bytes
-        let hash_bytes = &(*hash.bytes);
-        for index in 0..64 {
-            // Every byte is two hex digits
-            let second = hash_bytes[index] & 0b0000_1111u8; //Grab the low 4 bits
-            let first = hash_bytes[index] >> 4 & 0b0000_1111u8; //Grab the high 4 bits
-            hash_string.push(Hash::map_to_char(first));
-            hash_string.push(Hash::map_to_char(second));
-        }
-        hash_string
+        String::from(&hash)
     }
 }
 
 #[cfg(test)]
 impl Hash {
-    // Only available when testing
+    // NOTE: Only available when testing
     pub fn generate_random_hash() -> Hash {
         use rand::Rng;
         let rng = rand::thread_rng();
@@ -281,7 +256,6 @@ impl Hash {
 #[cfg(test)]
 mod tests {
     use crate::hash::{Hash};
-    use testspace::TestSpace;
     use std::cmp::Ordering;
 
     #[test]
@@ -374,7 +348,7 @@ mod tests {
             0xa,0xb,0xc,0xd,0xe,0xf,0xa,0xb,
             0xa,0xb,0xc,0xd,0xe,0xf,0xa,0xb,
             0xa,0xb,0xc,0xd,0xe,0xf,0xa,0xb,
-        ];;
+        ];
         let bytes2: [u8;64] = [
             0xa,0xb,0xc,0xd,0xe,0xf,0xa,0xb,
             0xa,0xb,0xc,0xd,0xe,0xf,0xa,0xb,
@@ -390,5 +364,20 @@ mod tests {
         // TODO: From std::convert::From<&[u8; 64]>
         let cmp_result = hash.cmp(&hash2);
         assert_eq!(cmp_result, Ordering::Less);
+    }
+
+    #[test]
+    fn test_hash_equilivancy() {
+        let bytes = [0x6F,0x72,0x22,0x2C,0x33,0xB9,0xBF,0x85,0xE6,0x37,0x91,0x89,0x11,0x6F,0xD6,0x0D,0x94,
+        0xB0,0x7E,0x22,0x6F,0xCE,0xEF,0x43,0x4E,0x33,0x76,0xD6,0xDD,0x84,0x57,0x59,0xE3,0x61,0x11,0x48,0x3D,0x99,0x0D,0xD8,0x4A,0xFC,0xBF,0x67,0xF3,
+        0x2B,0x68,0x71,0xD8,0x25,0xE6,0x54,0x43,0xA7,0xCF,0x61,0xD0,0x43,0xFE,0x1D,0x81,0x4C,0x02,0xED];
+        let hash = Hash::from(&bytes[..]);
+        let string = "6F72222C33B9BF85E6379189116FD60D94B07E226FCEEF434E3376D6DD845759E36111483D990DD84AFCBF67F32B6871D825E65443A7CF61D043FE1D814C02ED";
+        let hash2 = Hash::from(string);
+        assert_eq!(hash, hash2);
+        let display_string = hash2.to_string();
+        let hash_string = String::from(hash2);
+        assert_eq!(string, hash_string);
+        assert_eq!(display_string, hash_string);
     }
 }

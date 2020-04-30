@@ -8,12 +8,6 @@ use super::SnapshotBuilder;
 
 // TODO: SnapshotBuilder should return self
 impl SnapshotBuilder {
-    pub fn change(snapshot: Snapshot) -> SnapshotBuilder {
-        // TODO: When a snapshot is changed a new hash must be calculated and that hash distributed to its children and parents
-        // TODO: But this is only a partial fix ?
-        SnapshotBuilder::from(snapshot)
-    }
-
     pub fn new() -> SnapshotBuilder {
         SnapshotBuilder {
             message: None,
@@ -24,19 +18,22 @@ impl SnapshotBuilder {
         }
     }
 
-    pub fn set_message(&mut self, message: String) {
+    pub fn set_message(mut self, message: String) -> Self {
         self.message = Some(message);
+        self
     }
-
-    pub fn add_file(&mut self, file_to_snapshot: FileMetadata) {
+    #[allow(dead_code)]
+    pub fn add_file(mut self, file_to_snapshot: FileMetadata) -> Self {
         self.files.push(file_to_snapshot);
+        self
     }
 
-    pub fn add_files(&mut self, mut files_to_add: Vec<FileMetadata>) {
+    pub fn add_files(mut self, mut files_to_add: Vec<FileMetadata>) -> Self {
         self.files.append(&mut files_to_add);
+        self
     }
-
-    pub fn remove_file(&mut self, file_to_remove: &path::Path) {
+    #[allow(dead_code)]
+    pub fn remove_file(mut self, file_to_remove: &path::Path) -> Self {
         if let Some(index) = self.files.iter().position(|metadata| metadata.path() == file_to_remove)
         {
             self.files.swap_remove(index);
@@ -44,17 +41,20 @@ impl SnapshotBuilder {
             // TODO: This needs to be handled better
             panic!("Attempted to remove a file from a snapshot that is not part of the snapshot");
         }
+        self
     }
 
-    pub fn change_parent(&mut self, new_parent: Option<Hash>) {
+    pub fn change_parent(mut self, new_parent: Option<Hash>) -> Self {
         self.parent = new_parent;
+        self
     }
-
-    pub fn add_child(&mut self, new_child: Hash) {
+    #[allow(dead_code)]
+    pub fn add_child(mut self, new_child: Hash) -> Self {
         self.children.push(new_child);
+        self
     }
-
-    pub fn remove_child(&mut self, child_to_remove: &Hash) {
+    #[allow(dead_code)]
+    pub fn remove_child(mut self, child_to_remove: &Hash) -> Self {
         if let Some(index) = self.children.iter().position(|hash| hash == child_to_remove)
         {
             self.children.swap_remove(index);
@@ -62,6 +62,7 @@ impl SnapshotBuilder {
             // TODO: This needs to be handled better
             panic!("Attempted to remove root hash that does not exist");
         }
+        self
     }
 
     pub fn build(self) -> Snapshot {
@@ -156,35 +157,28 @@ impl std::fmt::Debug for SnapshotBuilder {
 
 #[cfg(test)]
 mod tests {
-    use super::{ SnapshotBuilder, FileMetadata, Snapshot };
+    use super::{ SnapshotBuilder, FileMetadata };
     use testspace::TestSpace;
     use crate::hash::Hash;
 
     #[test]
     fn build_a_snapshot_test(){
-        let mut builder = SnapshotBuilder::new();
+        let builder = SnapshotBuilder::new();
         let mut ts = TestSpace::new();
         let mut file_list = ts.create_random_files(1, 2048);
         let file = file_list.remove(0);
         let test_hash = Hash::generate_random_hash();
         let test_parent = Hash::generate_random_hash();
-        builder.set_message(String::from("A Message"));
-        builder.add_file(FileMetadata::new(test_hash, 2048, file.clone(), 0));
-        builder.change_parent(Some(test_parent.clone()));
-        let result = builder.build();
+        let result = builder.set_message(String::from("A Message"))
+            .add_file(FileMetadata::new(test_hash, 2048, file.clone(), 0))
+            .change_parent(Some(test_parent.clone()))
+            .build();
         assert_eq!(result.get_message(), "A Message");
         assert_eq!(result.get_parent(), Some(test_parent).as_ref());
     }
 
     #[test]
     fn change_snapshot_test() {
-        let test_snapshot = Snapshot::create_test_snapshot();
-        let mut builder = SnapshotBuilder::change(test_snapshot);
-        assert_ne!(builder.message, Some(String::from("test")));
-        builder.set_message(String::from("test"));
-        builder.change_parent(None);
-        assert_eq!(builder.message, Some(String::from("test")));
-        let snapshot = builder.build();
-        assert_eq!(snapshot.get_parent(), None);
+        
     }
 }

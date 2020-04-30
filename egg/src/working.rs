@@ -9,7 +9,7 @@ use std::path::PathBuf;
 use crate::error::{Error,UnderlyingError};
 use crate::hash::Hash;
 use std::collections::HashMap;
-use crate::snapshots::types::{Snapshot, FileMetadata};
+use crate::snapshots::{Snapshot, FileMetadata};
 
 type Result<T> = std::result::Result<T, Error>;
 
@@ -113,8 +113,8 @@ impl<'a> WorkingDirectory<'a> {
         let mut directories_to_search = Vec::new();
         let mut files_found = HashMap::new();
         WorkingDirectory::index_directory(self.path_to_working, &mut files_found, &mut directories_to_search)?;
-        while directories_to_search.is_empty() == false {
-            let path_to_search = directories_to_search.pop().unwrap();
+        // FIXME: This is subject to infinite recursion if user has created links to parent directory
+        while let Some(path_to_search) = directories_to_search.pop() {
             WorkingDirectory::index_directory(path_to_search.as_path(), &mut files_found, &mut directories_to_search)?;
         }
         Ok(files_found)

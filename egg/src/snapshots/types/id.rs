@@ -1,12 +1,9 @@
 use crate::hash::Hash;
+use super::SnapshotId;
 // TODO: Custom impl of hash that just returns the Hash would work
-// Using RC for both the path and the hash saves many allocations
+// Using RC for both the path and the hash saves many allocations but creates multithreading issues
 // TODO: Add location information to Hash variant
-#[derive(Debug, Clone, Eq, Hash)]
-pub enum SnapshotId {
-  NotLoaded(Hash),             // Snapshot is not loaded and must be before it can be referenced
-  Indexed(usize, Hash),   // Contains the hash and index
-}
+
 
 // impl Display for SnapshotId {
 //   fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -24,16 +21,25 @@ impl PartialEq for SnapshotId {
     /// Checks for equlivancy, only the hash is compared, whether the snapshot is loaded or not is disregarded
     fn eq(&self, other: &Self) -> bool {
         match self {
-            SnapshotId::NotLoaded(hash) => {
+            SnapshotId::Located(hash, _) => {
                 match other {
-                    SnapshotId::NotLoaded(other_hash) => hash == other_hash,
+                    SnapshotId::Located(other_hash, _) => hash == other_hash,
                     SnapshotId::Indexed(_, other_hash) => hash == other_hash,
+                    SnapshotId::NotLocated(other_hash) => hash == other_hash,
                 }
             },
             SnapshotId::Indexed(_, hash) => {
                 match other {
-                    SnapshotId::NotLoaded(other_hash) => hash == other_hash,
+                    SnapshotId::Located(other_hash, _) => hash == other_hash,
                     SnapshotId::Indexed(_, other_hash) => hash == other_hash,
+                    SnapshotId::NotLocated(other_hash) => hash == other_hash,
+                }
+            },
+            SnapshotId::NotLocated(hash) => {
+                match other {
+                    SnapshotId::Located(other_hash, _) => hash == other_hash,
+                    SnapshotId::Indexed(_, other_hash) => hash == other_hash,
+                    SnapshotId::NotLocated(other_hash) => hash == other_hash,
                 }
             }
         }
@@ -44,23 +50,27 @@ impl SnapshotId {
     /// Is this ID currently indexed, meaning is the snapshot that this ID refers to already loaded
     pub fn is_indexed(&self) -> bool {
         match self {
-            SnapshotId::NotLoaded(_) => false,
+            SnapshotId::Located(_, _) => false,
             SnapshotId::Indexed(_,_) => true,
+            SnapshotId::NotLocated(_) => false,
         }
     }
 
     /// Returns a reference to the internal hash
     pub(crate) fn get_hash(&self) -> &Hash {
         match self {
-            SnapshotId::NotLoaded(hash) => hash,
+            SnapshotId::Located(hash, _) => hash,
             SnapshotId::Indexed(_, hash) => hash,
+            SnapshotId::NotLocated(hash) => hash,
         }
     }
+
     /// Removes the hash from the SnapshotId, the SnapshotId is consumed
     pub(crate) fn take_hash(self) -> Hash {
         match self {
-            SnapshotId::NotLoaded(hash) => hash,
+            SnapshotId::Located(hash, _) => hash,
             SnapshotId::Indexed(_, hash) => hash,
+            SnapshotId::NotLocated(hash) => hash,
         }
     }
 }
@@ -69,12 +79,13 @@ impl SnapshotId {
 mod tests {
     use crate::hash::Hash;
     use crate::snapshots::types::SnapshotId;
+    use crate::snapshots::types::SnapshotLocation;
 
     #[test]
     fn snapshot_id_equal_test() {
         let test_hash = Hash::generate_random_hash();
         let id1 = SnapshotId::Indexed(4, test_hash.clone());
-        let id2 = SnapshotId::NotLoaded(test_hash);
+        let id2 = SnapshotId::Located(test_hash, SnapshotLocation::Simple);
         assert_eq!(id1, id2);
         let test_hash2 = Hash::generate_random_hash();
         let test_hash3 = Hash::generate_random_hash();
