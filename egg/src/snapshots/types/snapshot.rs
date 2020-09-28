@@ -28,6 +28,7 @@ impl Snapshot {
         }
     }
 
+    // TODO: This should be removed
     pub(crate) fn breakup(self) -> (Hash, Vec<Hash>, Vec<FileMetadata>, Option<Hash>, String) {
         let Snapshot {id, parent, children, files, message} = self;
         (id, children, files, parent, message)

@@ -1,9 +1,8 @@
-use crate::hash::Hash;
 use super::SnapshotId;
+use crate::hash::Hash;
 // TODO: Custom impl of hash that just returns the Hash would work
 // Using RC for both the path and the hash saves many allocations but creates multithreading issues
 // TODO: Add location information to Hash variant
-
 
 // impl Display for SnapshotId {
 //   fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -11,7 +10,7 @@ use super::SnapshotId;
 //       SnapshotId::Hash(hash) => write!(f, "Snapshot Id is a hash {}", hash),
 //       SnapshotId::Indexed(index, hash) => write!(f, "Snapshot Id is an index {}", index),
 //     }
-    
+
 //   }
 // }
 
@@ -21,27 +20,21 @@ impl PartialEq for SnapshotId {
     /// Checks for equlivancy, only the hash is compared, whether the snapshot is loaded or not is disregarded
     fn eq(&self, other: &Self) -> bool {
         match self {
-            SnapshotId::Located(hash, _) => {
-                match other {
-                    SnapshotId::Located(other_hash, _) => hash == other_hash,
-                    SnapshotId::Indexed(_, other_hash) => hash == other_hash,
-                    SnapshotId::NotLocated(other_hash) => hash == other_hash,
-                }
+            SnapshotId::Located(hash, _) => match other {
+                SnapshotId::Located(other_hash, _) => hash == other_hash,
+                SnapshotId::Indexed(_, other_hash) => hash == other_hash,
+                SnapshotId::NotLocated(other_hash) => hash == other_hash,
             },
-            SnapshotId::Indexed(_, hash) => {
-                match other {
-                    SnapshotId::Located(other_hash, _) => hash == other_hash,
-                    SnapshotId::Indexed(_, other_hash) => hash == other_hash,
-                    SnapshotId::NotLocated(other_hash) => hash == other_hash,
-                }
+            SnapshotId::Indexed(_, hash) => match other {
+                SnapshotId::Located(other_hash, _) => hash == other_hash,
+                SnapshotId::Indexed(_, other_hash) => hash == other_hash,
+                SnapshotId::NotLocated(other_hash) => hash == other_hash,
             },
-            SnapshotId::NotLocated(hash) => {
-                match other {
-                    SnapshotId::Located(other_hash, _) => hash == other_hash,
-                    SnapshotId::Indexed(_, other_hash) => hash == other_hash,
-                    SnapshotId::NotLocated(other_hash) => hash == other_hash,
-                }
-            }
+            SnapshotId::NotLocated(hash) => match other {
+                SnapshotId::Located(other_hash, _) => hash == other_hash,
+                SnapshotId::Indexed(_, other_hash) => hash == other_hash,
+                SnapshotId::NotLocated(other_hash) => hash == other_hash,
+            },
         }
     }
 }
@@ -51,7 +44,7 @@ impl SnapshotId {
     pub fn is_indexed(&self) -> bool {
         match self {
             SnapshotId::Located(_, _) => false,
-            SnapshotId::Indexed(_,_) => true,
+            SnapshotId::Indexed(_, _) => true,
             SnapshotId::NotLocated(_) => false,
         }
     }

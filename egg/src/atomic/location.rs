@@ -1,5 +1,5 @@
-use std::path;
 use super::AtomicLocation;
+use std::path;
 
 impl AtomicLocation {
     pub fn get_path(&self) -> &path::Path {

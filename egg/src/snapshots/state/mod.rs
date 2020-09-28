@@ -1,8 +1,8 @@
 use super::SnapshotsState;
 
-mod init;
-mod change;
 mod builder;
+mod change;
+mod init;
 
 // Helper struct to help with managing changes to state
 pub struct StateBuilder<'a> {
@@ -12,8 +12,8 @@ pub struct StateBuilder<'a> {
 #[cfg(test)]
 mod tests {
     use crate::hash::Hash;
-    use crate::AtomicUpdate;
     use crate::snapshots::SnapshotsState;
+    use crate::AtomicUpdate;
     use testspace::TestSpace;
 
     impl PartialEq for SnapshotsState {
@@ -59,19 +59,23 @@ mod tests {
         let repository_path = ts2.get_path();
         let known_hash = latest_hash.clone();
         {
-            let mut au =
-                AtomicUpdate::new(repository_path, working_path).expect("Failed to initialize atomic updater");
+            let mut au = AtomicUpdate::new(repository_path, working_path)
+                .expect("Failed to initialize atomic updater");
             let mut initial =
                 SnapshotsState::new(repository_path).expect("Failed to initialize state");
-            initial.change_state(&mut au, |state| {
-                state.set_latest_snapshot(Some(latest_hash));
-                Ok(())
-            }).expect("Failed to change state");
+            initial
+                .change_state(&mut au, |state| {
+                    state.set_latest_snapshot(Some(latest_hash));
+                    Ok(())
+                })
+                .expect("Failed to change state");
             au.complete().expect("Failed to update files atomically");
         }
 
         let result = SnapshotsState::load(repository_path).expect("Failed to load state");
-        let result_hash = result.get_latest_snapshot().expect("Get latest snapshot returned none after a hash was added to latest snapshot");
+        let result_hash = result
+            .get_latest_snapshot()
+            .expect("Get latest snapshot returned none after a hash was added to latest snapshot");
         assert_eq!(result_hash, known_hash);
     }
 
@@ -94,8 +98,8 @@ mod tests {
         {
             let mut initial =
                 SnapshotsState::new(repository_path).expect("Failed to initialize state");
-            let mut au =
-                AtomicUpdate::new(repository_path, working_path).expect("Failed to initialize atomic updater");
+            let mut au = AtomicUpdate::new(repository_path, working_path)
+                .expect("Failed to initialize atomic updater");
             initial
                 .change_state(&mut au, |state| {
                     state.set_working_snapshot(Some(latest_hash));
@@ -128,8 +132,8 @@ mod tests {
         {
             let mut initial =
                 SnapshotsState::new(repository_path).expect("Failed to initialize state");
-            let mut au =
-                AtomicUpdate::new(repository_path, working_path).expect("Failed to initialize atomic updater");
+            let mut au = AtomicUpdate::new(repository_path, working_path)
+                .expect("Failed to initialize atomic updater");
             initial
                 .change_state(&mut au, |state| {
                     state.add_root_node(known_hash.clone());
@@ -139,14 +143,25 @@ mod tests {
             au.complete().expect("Failed to complete atomic update");
         }
         {
-            let state = SnapshotsState::parse_state_file(repository_path.join(SnapshotsState::SNAPSHOTS_PATH).join(SnapshotsState::STATE_FILE_NAME)).expect("Failed to load state");
+            let state = SnapshotsState::parse_state_file(
+                repository_path
+                    .join(SnapshotsState::SNAPSHOTS_PATH)
+                    .join(SnapshotsState::STATE_FILE_NAME),
+            )
+            .expect("Failed to load state");
             assert_eq!(state.root_snapshots.len(), 1);
             assert_eq!(state.root_snapshots[0], latest_hash);
         }
         {
-            let mut state = SnapshotsState::parse_state_file(repository_path.join(SnapshotsState::SNAPSHOTS_PATH).join(SnapshotsState::STATE_FILE_NAME)).expect("Failed to load state");
+            let mut state = SnapshotsState::parse_state_file(
+                repository_path
+                    .join(SnapshotsState::SNAPSHOTS_PATH)
+                    .join(SnapshotsState::STATE_FILE_NAME),
+            )
+            .expect("Failed to load state");
             let mut au = AtomicUpdate::load(working_path, repository_path);
-            state.change_state(&mut au, |state| {
+            state
+                .change_state(&mut au, |state| {
                     state.remove_root_node(&known_hash);
                     Ok(())
                 })
@@ -155,7 +170,12 @@ mod tests {
             assert_eq!(state.root_snapshots.len(), 0);
         }
         {
-            let state = SnapshotsState::parse_state_file(repository_path.join(SnapshotsState::SNAPSHOTS_PATH).join(SnapshotsState::STATE_FILE_NAME)).expect("Failed to load state");
+            let state = SnapshotsState::parse_state_file(
+                repository_path
+                    .join(SnapshotsState::SNAPSHOTS_PATH)
+                    .join(SnapshotsState::STATE_FILE_NAME),
+            )
+            .expect("Failed to load state");
             assert_eq!(state.root_snapshots.len(), 0);
         }
     }
@@ -175,20 +195,27 @@ mod tests {
         {
             let mut initial =
                 SnapshotsState::new(repository_path).expect("Failed to initialize state");
-            let mut au =
-                AtomicUpdate::new(repository_path, working_path).expect("Failed to initialize atomic updater");
+            let mut au = AtomicUpdate::new(repository_path, working_path)
+                .expect("Failed to initialize atomic updater");
             // Add the first 10 hashes to the recent list
-            initial.change_state(&mut au, |state| {
-                for hash in test_hashes.as_slice()[..10].iter() {
-                    state.add_recent_snapshot(hash.clone());
-                }
-                Ok(())
-            }).expect("Failed to change state");
+            initial
+                .change_state(&mut au, |state| {
+                    for hash in test_hashes.as_slice()[..10].iter() {
+                        state.add_recent_snapshot(hash.clone());
+                    }
+                    Ok(())
+                })
+                .expect("Failed to change state");
             au.complete().expect("Failed to complete atomic update");
             assert_eq!(initial.recent_snapshots.len(), 10);
         }
         {
-            let mut state = SnapshotsState::parse_state_file(repository_path.join(SnapshotsState::SNAPSHOTS_PATH).join(SnapshotsState::STATE_FILE_NAME)).expect("Failed to load state");
+            let mut state = SnapshotsState::parse_state_file(
+                repository_path
+                    .join(SnapshotsState::SNAPSHOTS_PATH)
+                    .join(SnapshotsState::STATE_FILE_NAME),
+            )
+            .expect("Failed to load state");
             assert_eq!(state.recent_snapshots.len(), 10);
             // Check for those 10 hashes
             for index in 0..state.recent_snapshots.len() {
@@ -207,7 +234,12 @@ mod tests {
             au.complete().expect("Failed to complete atomic update");
         }
         {
-            let state = SnapshotsState::parse_state_file(repository_path.join(SnapshotsState::SNAPSHOTS_PATH).join(SnapshotsState::STATE_FILE_NAME)).expect("Failed to load state");
+            let state = SnapshotsState::parse_state_file(
+                repository_path
+                    .join(SnapshotsState::SNAPSHOTS_PATH)
+                    .join(SnapshotsState::STATE_FILE_NAME),
+            )
+            .expect("Failed to load state");
             // Check state after removing oldest 5 - so fifth test hash should be first hash in recent
             for index in 5..state.recent_snapshots.len() {
                 assert_eq!(state.recent_snapshots[index - 5], test_hashes[index]);
@@ -234,31 +266,50 @@ mod tests {
         {
             let mut initial =
                 SnapshotsState::new(repository_path).expect("Failed to initialize state");
-            let mut au =
-                AtomicUpdate::new(repository_path, working_path).expect("Failed to initialize atomic updater");
-            initial.change_state(&mut au, |state| {
-                state.add_end_node(known_hash.clone());
-                Ok(())
-            }).expect("Failed to change state");
+            let mut au = AtomicUpdate::new(repository_path, working_path)
+                .expect("Failed to initialize atomic updater");
+            initial
+                .change_state(&mut au, |state| {
+                    state.add_end_node(known_hash.clone());
+                    Ok(())
+                })
+                .expect("Failed to change state");
             au.complete().expect("Failed to complete atomic update");
         }
         {
-            let state = SnapshotsState::parse_state_file(repository_path.join(SnapshotsState::SNAPSHOTS_PATH).join(SnapshotsState::STATE_FILE_NAME)).expect("Failed to load state");
+            let state = SnapshotsState::parse_state_file(
+                repository_path
+                    .join(SnapshotsState::SNAPSHOTS_PATH)
+                    .join(SnapshotsState::STATE_FILE_NAME),
+            )
+            .expect("Failed to load state");
             assert_eq!(state.end_snapshots.len(), 1);
             assert_eq!(state.end_snapshots[0], latest_hash);
         }
         {
-            let mut state = SnapshotsState::parse_state_file(repository_path.join(SnapshotsState::SNAPSHOTS_PATH).join(SnapshotsState::STATE_FILE_NAME)).expect("Failed to load state");
+            let mut state = SnapshotsState::parse_state_file(
+                repository_path
+                    .join(SnapshotsState::SNAPSHOTS_PATH)
+                    .join(SnapshotsState::STATE_FILE_NAME),
+            )
+            .expect("Failed to load state");
             let mut au = AtomicUpdate::load(working_path, repository_path);
-            state.change_state(&mut au, |state| {
-                state.remove_end_node(&known_hash);
-                Ok(())
-            }).expect("Failed to change state and remove root snapshot");
+            state
+                .change_state(&mut au, |state| {
+                    state.remove_end_node(&known_hash);
+                    Ok(())
+                })
+                .expect("Failed to change state and remove root snapshot");
             au.complete().expect("Failed to complete atomic update");
             assert_eq!(state.end_snapshots.len(), 0);
         }
         {
-            let state = SnapshotsState::parse_state_file(repository_path.join(SnapshotsState::SNAPSHOTS_PATH).join(SnapshotsState::STATE_FILE_NAME)).expect("Failed to load state");
+            let state = SnapshotsState::parse_state_file(
+                repository_path
+                    .join(SnapshotsState::SNAPSHOTS_PATH)
+                    .join(SnapshotsState::STATE_FILE_NAME),
+            )
+            .expect("Failed to load state");
             assert_eq!(state.end_snapshots.len(), 0);
         }
     }

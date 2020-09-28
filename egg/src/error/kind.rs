@@ -1,5 +1,5 @@
+use super::{ErrorContext, UnderlyingError};
 use std::fmt;
-use super::{UnderlyingError, ErrorContext};
 
 /// The error type that occurred in egg storage
 pub enum ErrorKind {
@@ -26,14 +26,38 @@ impl std::fmt::Display for ErrorKind {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         // TODO: Custom message based on the underlying cause of the error
         match self {
-            ErrorKind::FileOperation(_, context) => write!(f, "A file operation has failed\n{}", context),
-            ErrorKind::ParsingError(_, context) => write!(f, "Reading data from the repository has failed\n{}", context),
-            ErrorKind::WriteFailed(_, context) => write!(f, "Writing data to the repository has failed\n{}", context),
-            ErrorKind::RepositoryNotFound(context) => write!(f, "No repository was found\n{}", context),
-            ErrorKind::InvalidRepository(context) => write!(f, "On disk state of repository appears to be invalid\n{}", context),
-            ErrorKind::InvalidParameter(_, context) => write!(f, "Invalid parameter was used\n{}", context),
-            ErrorKind::InvalidState(_, context) => write!(f, "In memory state of repository appeats to be invalid\n{}", context),
-            ErrorKind::InvalidOperation(_, context) => write!(f, "Attempted an operation that is not currently possible\n{}", context),
+            ErrorKind::FileOperation(_, context) => {
+                write!(f, "A file operation has failed\n{}", context)
+            }
+            ErrorKind::ParsingError(_, context) => write!(
+                f,
+                "Reading data from the repository has failed\n{}",
+                context
+            ),
+            ErrorKind::WriteFailed(_, context) => {
+                write!(f, "Writing data to the repository has failed\n{}", context)
+            }
+            ErrorKind::RepositoryNotFound(context) => {
+                write!(f, "No repository was found\n{}", context)
+            }
+            ErrorKind::InvalidRepository(context) => write!(
+                f,
+                "On disk state of repository appears to be invalid\n{}",
+                context
+            ),
+            ErrorKind::InvalidParameter(_, context) => {
+                write!(f, "Invalid parameter was used\n{}", context)
+            }
+            ErrorKind::InvalidState(_, context) => write!(
+                f,
+                "In memory state of repository appeats to be invalid\n{}",
+                context
+            ),
+            ErrorKind::InvalidOperation(_, context) => write!(
+                f,
+                "Attempted an operation that is not currently possible\n{}",
+                context
+            ),
         }
     }
 }
@@ -41,14 +65,44 @@ impl std::fmt::Display for ErrorKind {
 impl std::fmt::Debug for ErrorKind {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
-            ErrorKind::FileOperation(error, context) => write!(f, "A file operation has failed\nThe system error was {:?},\n\n{}", error, context),
-            ErrorKind::ParsingError(error, context) => write!(f, "Reading data from the repository has failed\nThe error was {:?}\n{}", error, context),
-            ErrorKind::WriteFailed(error, context) => write!(f, "Writing data to the repository has failed\nThe underlying error was {:?}\n{}", error, context),
-            ErrorKind::RepositoryNotFound(context) => write!(f, "No repository was found\n{}", context),
-            ErrorKind::InvalidRepository(context) => write!(f, "On disk data structures have become invalid\n{}", context),
-            ErrorKind::InvalidParameter(error, context) => write!(f, "An invalid parameter was used or created inside egg, error was {:?}\n{}", error, context),
-            ErrorKind::InvalidState(error, context) => write!(f, "In memory data structures have become invalid, error was {:?}\n{}", error, context),
-            ErrorKind::InvalidOperation(error, context) => write!(f, "Attempted an operation that is not currently possible, error was {:?}\n{}", error, context),
+            ErrorKind::FileOperation(error, context) => write!(
+                f,
+                "A file operation has failed\nThe system error was {:?},\n\n{}",
+                error, context
+            ),
+            ErrorKind::ParsingError(error, context) => write!(
+                f,
+                "Reading data from the repository has failed\nThe error was {:?}\n{}",
+                error, context
+            ),
+            ErrorKind::WriteFailed(error, context) => write!(
+                f,
+                "Writing data to the repository has failed\nThe underlying error was {:?}\n{}",
+                error, context
+            ),
+            ErrorKind::RepositoryNotFound(context) => {
+                write!(f, "No repository was found\n{}", context)
+            }
+            ErrorKind::InvalidRepository(context) => write!(
+                f,
+                "On disk data structures have become invalid\n{}",
+                context
+            ),
+            ErrorKind::InvalidParameter(error, context) => write!(
+                f,
+                "An invalid parameter was used or created inside egg, error was {:?}\n{}",
+                error, context
+            ),
+            ErrorKind::InvalidState(error, context) => write!(
+                f,
+                "In memory data structures have become invalid, error was {:?}\n{}",
+                error, context
+            ),
+            ErrorKind::InvalidOperation(error, context) => write!(
+                f,
+                "Attempted an operation that is not currently possible, error was {:?}\n{}",
+                error, context
+            ),
         }
     }
 }

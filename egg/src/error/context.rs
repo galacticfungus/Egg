@@ -25,7 +25,10 @@ impl ErrorContext {
 impl std::fmt::Display for ErrorContext {
     // Display only prints context messages that are assigned MessageType::User or MessageType::Both
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        for line in self.messages.iter().rev().filter(|line| {match line.1 { MessageType::Debug => false, _ => true } }) {
+        for line in self.messages.iter().rev().filter(|line| match line.1 {
+            MessageType::Debug => false,
+            _ => true,
+        }) {
             writeln!(f, "{}", line.0).unwrap();
         }
         Ok(())
@@ -35,7 +38,10 @@ impl std::fmt::Display for ErrorContext {
 impl std::fmt::Debug for ErrorContext {
     // Debug only prints context messages that are assigned MessageType::Debug or MessageType::Both
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        for line in self.messages.iter().rev().filter(|line| {match line.1 { MessageType::User => false, _ => true } }) {
+        for line in self.messages.iter().rev().filter(|line| match line.1 {
+            MessageType::User => false,
+            _ => true,
+        }) {
             writeln!(f, "{}", line.0).unwrap();
         }
         Ok(())

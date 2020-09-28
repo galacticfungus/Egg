@@ -1,6 +1,6 @@
+use std::fmt;
 use std::io;
 use std::string;
-use std::fmt;
 
 #[derive(Debug)]
 pub enum UnderlyingError {

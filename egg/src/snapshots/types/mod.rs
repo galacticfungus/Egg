@@ -45,7 +45,7 @@ pub struct FileMetadata {
 pub struct Snapshot {
     id: Hash,
     message: std::string::String,
-    // FIXME: This actually needs to be a list since snapshots may be merged?
+    // FIXME: This actually needs to be a list since snapshots may be merged? and we want to track what snapshots were merged
     parent: Option<Hash>,               // The snapshot that this snapshot is based off
     children: Vec<Hash>,                // Snapshots that this snapshot serves as the basis
     files: Vec<FileMetadata>,           // Each path has a hash associated with it, in addition to a file size and a modification time

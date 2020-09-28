@@ -3,7 +3,7 @@ use crate::hash::Hash;
 
 impl<'a> StateBuilder<'a> {
     pub fn new(state_to_modify: &'a mut SnapshotsState) -> StateBuilder {
-        StateBuilder { 
+        StateBuilder {
             state: state_to_modify,
         }
     }
@@ -31,7 +31,11 @@ impl<'a> StateBuilder<'a> {
     }
 
     pub fn remove_root_node(&mut self, root_hash: &Hash) {
-        if let Some(index) = self.state.root_snapshots.iter().position(|hash| hash == root_hash)
+        if let Some(index) = self
+            .state
+            .root_snapshots
+            .iter()
+            .position(|hash| hash == root_hash)
         {
             self.state.root_snapshots.swap_remove(index);
         } else {
@@ -40,8 +44,12 @@ impl<'a> StateBuilder<'a> {
         }
     }
 
-    pub fn remove_end_node(&mut self, end_hash: &Hash)  {
-        if let Some(index) = self.state.end_snapshots.iter().position(|hash| hash == end_hash)
+    pub fn remove_end_node(&mut self, end_hash: &Hash) {
+        if let Some(index) = self
+            .state
+            .end_snapshots
+            .iter()
+            .position(|hash| hash == end_hash)
         {
             self.state.end_snapshots.swap_remove(index);
         } else {

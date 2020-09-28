@@ -4,12 +4,17 @@ use crate::hash::Hash;
 use std::path;
 
 impl FileMetadata {
-    pub fn new(hash: Hash, file_size: u64, path: path::PathBuf, modified_time: u128) -> FileMetadata {
+    pub fn new(
+        hash: Hash,
+        file_size: u64,
+        path: path::PathBuf,
+        modified_time: u128,
+    ) -> FileMetadata {
         FileMetadata {
-                hash,
-                path,
-                file_size,
-                modified_time,
+            hash,
+            path,
+            file_size,
+            modified_time,
         }
     }
 
@@ -32,6 +37,11 @@ impl FileMetadata {
 
 impl From<&FileMetadata> for String {
     fn from(metadata: &FileMetadata) -> Self {
-        format!("{} - hash {}/{} bytes",metadata.path().display(), metadata.hash, metadata.file_size)
+        format!(
+            "{} - hash {}/{} bytes",
+            metadata.path().display(),
+            metadata.hash,
+            metadata.file_size
+        )
     }
 }

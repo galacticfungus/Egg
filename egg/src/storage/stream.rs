@@ -8,8 +8,7 @@ use crate::error::{Error, UnderlyingError};
 pub type Result<T> = result::Result<T, Error>;
 use std::convert::TryFrom;
 
-//todo: benchmark storing paths as u16 and u32
-//todo: add these functions as extensions of readers and writers
+//todo: Swap all string lengths to use a u64
 /// Reads a path from the reader, it first reads the path length and then reads the path bytes
 pub trait ReadEggExt: io::Read + ReadBytesExt + io::Seek {
     fn read_string(&mut self) -> Result<String> {

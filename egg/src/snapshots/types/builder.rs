@@ -1,10 +1,9 @@
-use std::string::String;
+use super::SnapshotBuilder;
+use super::{FileMetadata, Snapshot};
 use crate::hash::Hash;
-use super::{Snapshot, FileMetadata};
 use blake2::{self, Digest};
 use std::path;
-use super::SnapshotBuilder;
-
+use std::string::String;
 
 // TODO: SnapshotBuilder should return self
 impl SnapshotBuilder {
@@ -34,7 +33,10 @@ impl SnapshotBuilder {
     }
     #[allow(dead_code)]
     pub fn remove_file(mut self, file_to_remove: &path::Path) -> Self {
-        if let Some(index) = self.files.iter().position(|metadata| metadata.path() == file_to_remove)
+        if let Some(index) = self
+            .files
+            .iter()
+            .position(|metadata| metadata.path() == file_to_remove)
         {
             self.files.swap_remove(index);
         } else {
@@ -55,7 +57,10 @@ impl SnapshotBuilder {
     }
     #[allow(dead_code)]
     pub fn remove_child(mut self, child_to_remove: &Hash) -> Self {
-        if let Some(index) = self.children.iter().position(|hash| hash == child_to_remove)
+        if let Some(index) = self
+            .children
+            .iter()
+            .position(|hash| hash == child_to_remove)
         {
             self.children.swap_remove(index);
         } else {
@@ -72,8 +77,14 @@ impl SnapshotBuilder {
         // TODO: Only build a new ID if it doesn't already have one
         // TODO: Does a snapshot have to include a message for the hash
         // Deconstruct self
-        let SnapshotBuilder { mut files, children, parent, message, id } = self;
-        
+        let SnapshotBuilder {
+            mut files,
+            children,
+            parent,
+            message,
+            id,
+        } = self;
+
         let message = message.unwrap();
         // TODO: If a snapshot is actually changed then a history of the changes needs to be kept, in addition how does the hash that identifies the snapshot change?
         if id.is_none() {
@@ -130,7 +141,9 @@ impl From<Snapshot> for SnapshotBuilder {
 impl std::fmt::Debug for SnapshotBuilder {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         fn string_from_optional_hash(hash_to_display: Option<&Hash>) -> String {
-            return hash_to_display.map(|hash| String::from(hash)).unwrap_or(String::from("None"));
+            return hash_to_display
+                .map(|hash| String::from(hash))
+                .unwrap_or(String::from("None"));
         }
         fn string_from_hash_vector(hash_vector: &[Hash]) -> String {
             let mut temp = String::new();
@@ -141,13 +154,28 @@ impl std::fmt::Debug for SnapshotBuilder {
         }
         // let bug = self.files.into_iter().map(|x| String::from(x));
         writeln!(f, "Builder State").unwrap();
-        
-        writeln!(f, "Message is {}", self.message.as_ref().unwrap_or(&String::from("No Message"))).unwrap();
-        writeln!(f, "Children are {}", string_from_hash_vector(self.children.as_slice())).unwrap();
+
+        writeln!(
+            f,
+            "Message is {}",
+            self.message.as_ref().unwrap_or(&String::from("No Message"))
+        )
+        .unwrap();
+        writeln!(
+            f,
+            "Children are {}",
+            string_from_hash_vector(self.children.as_slice())
+        )
+        .unwrap();
         for child in self.children.iter().map(|hash| String::from(hash)) {
             write!(f, "{},", child).unwrap();
         }
-        writeln!(f, "Parent is {}", string_from_optional_hash(self.parent.as_ref())).unwrap();
+        writeln!(
+            f,
+            "Parent is {}",
+            string_from_optional_hash(self.parent.as_ref())
+        )
+        .unwrap();
         for data in self.files.iter().map(|data| String::from(data)) {
             writeln!(f, "{}", data).unwrap();
         }
@@ -157,19 +185,20 @@ impl std::fmt::Debug for SnapshotBuilder {
 
 #[cfg(test)]
 mod tests {
-    use super::{ SnapshotBuilder, FileMetadata };
-    use testspace::TestSpace;
+    use super::{FileMetadata, SnapshotBuilder};
     use crate::hash::Hash;
+    use testspace::TestSpace;
 
     #[test]
-    fn build_a_snapshot_test(){
+    fn build_a_snapshot_test() {
         let builder = SnapshotBuilder::new();
         let mut ts = TestSpace::new();
         let mut file_list = ts.create_random_files(1, 2048);
         let file = file_list.remove(0);
         let test_hash = Hash::generate_random_hash();
         let test_parent = Hash::generate_random_hash();
-        let result = builder.set_message(String::from("A Message"))
+        let result = builder
+            .set_message(String::from("A Message"))
             .add_file(FileMetadata::new(test_hash, 2048, file.clone(), 0))
             .change_parent(Some(test_parent.clone()))
             .build();
@@ -178,7 +207,5 @@ mod tests {
     }
 
     #[test]
-    fn change_snapshot_test() {
-        
-    }
+    fn change_snapshot_test() {}
 }

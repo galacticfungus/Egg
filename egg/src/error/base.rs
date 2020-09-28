@@ -1,15 +1,12 @@
+use super::{ErrorContext, ErrorKind, MessageType, UnderlyingError};
 use std::fmt;
-use super::{ErrorContext, MessageType, ErrorKind, UnderlyingError};
-
 
 /// An error that occurred in egg-lib
 pub struct Error {
     kind: ErrorKind,
 }
 
-
 // TODO: A recoverable error - ie a function return that is either a result or a response object, extension to Error trait
-
 
 impl Error {
     // Create a parsing error
@@ -148,6 +145,4 @@ mod tests {
     fn test_basic_error() {
         unimplemented!();
     }
-
-    
 }

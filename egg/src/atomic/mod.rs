@@ -1,9 +1,9 @@
 use std::path;
 
 mod file;
-mod update;
 mod location;
 mod operation;
+mod update;
 // mod recovery;
 
 /// The atomic operation to perform, we store a path relative to the working directory
@@ -46,8 +46,8 @@ pub(crate) enum AtomicLocation {
 
 #[cfg(test)]
 mod tests {
+    use super::{AtomicLocation, AtomicUpdate};
     use testspace::TestSpace;
-    use super::{AtomicUpdate, AtomicLocation};
 
     #[test]
     fn test_atomic_replace_init() {
@@ -55,7 +55,8 @@ mod tests {
         let ts2 = ts.create_child();
         let working_path = ts.get_path();
         let repository_path = ts2.get_path();
-        AtomicUpdate::new(repository_path, working_path).expect("Failed to initialize atomic update");
+        AtomicUpdate::new(repository_path, working_path)
+            .expect("Failed to initialize atomic update");
         let temp_directory = repository_path.join(AtomicLocation::ReplaceWorking.get_path());
         let complete_directory = repository_path.join(AtomicLocation::ReplaceComplete.get_path());
         let previous_directory = repository_path.join(AtomicLocation::ReplacePrevious.get_path());
@@ -72,7 +73,8 @@ mod tests {
         let ts2 = ts.create_child();
         let working_path = ts.get_path();
         let repository_path = ts2.get_path();
-        AtomicUpdate::new(repository_path, working_path).expect("Failed to initialize atomic update");
+        AtomicUpdate::new(repository_path, working_path)
+            .expect("Failed to initialize atomic update");
         let complete_directory = repository_path.join(AtomicLocation::CreateComplete.get_path());
         let working_directory = repository_path.join(AtomicLocation::CreateWorking.get_path());
         assert!(working_directory.exists());
@@ -85,7 +87,8 @@ mod tests {
         let ts2 = ts.create_child();
         let repository_path = ts2.get_path();
         let working_path = ts.get_path();
-        AtomicUpdate::new(repository_path, working_path).expect("Failed to initialize atomic update");
+        AtomicUpdate::new(repository_path, working_path)
+            .expect("Failed to initialize atomic update");
         let complete_directory = repository_path.join(AtomicLocation::StoreComplete.get_path());
         let working_directory = repository_path.join(AtomicLocation::StoreWorking.get_path());
         assert!(working_directory.exists());
