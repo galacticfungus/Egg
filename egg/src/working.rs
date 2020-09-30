@@ -370,84 +370,186 @@ impl<'a> WorkingDirectory<'a> {
     // TODO: Tortoise and Hare approach for dealing with duplicates - cycle detection
 
     fn process_slice(
-        lines_inserted: &mut HashMap<String, usize>,
-        lines_removed: &mut HashMap<String, usize>,
-        new_line: usize,
-        original_line: usize,
+        primary_map: &mut HashMap<String, usize>,
+        secondary_map: &mut HashMap<String, usize>,
+        processing_line: &mut usize,
         previous_line: usize,
-        original_data: Vec<String>,
-        edited_data: Vec<String>,
-    ) -> SliceType {
-        let mut slice_length = 0;
-        let total = edited_data.len().max(original_data.len()) - new_line;
+        primary_data: Vec<String>,
+        secondary_data: Vec<String>,
+    ) -> () {
+        let mut slice_length = 1;
+        let current_line = *processing_line;
+        // let mut index_to_check = slice_length + 1;
+        eprintln!("{} is no longer considered removed", &primary_data[current_line]);
+        primary_map.remove(primary_data[current_line].as_str());
+        // NOTE: While its relatively safe to do this it's possible this needs to be reinserted if there are overlapping sequences
+        let line_offset = current_line - previous_line;
+        eprintln!(
+            "The offset between current line and previous is {}",
+            line_offset
+        );
+        // TODO: Check if the opposite side needs to be removed in the case of a slice with a size of one
+        // NOTE: This match checks if the start of the slice is also the end of the slice
+        // The ideal way of handling this is to immediately enter the below loop instead of special processing
+        // This doesn't seem possible since we already know that the initial position is part of a slice so either we check twice
+        // or change the order, ie remove then check next break if not
+        match (
+            secondary_data.get(current_line), // Line opposite the start of the slice
+            primary_data.get(current_line + line_offset), // Line to check to see if the start of the slice is also the end of the slice
+        ) {
+            (Some(opposite_line), Some(future_line)) => {
+                eprintln!(
+                    "Opposite line was {}, future line was {}, do we add them {}",
+                    opposite_line,
+                    future_line,
+                    opposite_line != future_line
+                );
+                if opposite_line != future_line {
+                    // We add the opposite line when these two lines are not equal but are also not NONE
+                    primary_map.insert(secondary_data[current_line].clone(), current_line);
+                    // TODO: We can exit slice handling early since the slice has ended
+                }
+            }
+            (Some(_), None) => {
+                // This means that there is a line opposite a slice but there are no future lines and the slice is ending, so we must add this line to removed
+                primary_map.insert(secondary_data[current_line].clone(), current_line);
+                // TODO: We can end slice handling early since the slice has ended
+            }
+            _ => {}
+        };
+        // A slice can only be as long as the smallest file or section if we have broken the file into parts
+        let total = primary_data.len().max(secondary_data.len()) - current_line;
+        eprintln!("Processing a slice that is potentially {} long", total);
+
+        // TODO: A loop here is not ideal but it can be vectorized
+        // Process the slice
+        // NOTE: We always check ahead by one to see if we add the current opposite side to the removed lines
         for _ in 1..total {
             eprintln!(
                 "Slice Iteration: {:?}, {:?}",
-                &lines_removed, &lines_inserted
+                &primary_map, &secondary_map
             );
             // QUESTION: Ideally we use an iterator here, if we return None the iterator stops, but dealing with overlapping slices becomes a challenge
-
+            // TODO: These three variables can all be moved inside a custom iterator
             // Returns true if the two lines match otherwise false, this includes a line not being present etc...
             let slice_continues = match (
-                original_data.get(previous_line + slice_length),
-                edited_data.get(new_line + slice_length),
+                secondary_data.get(previous_line + slice_length), // Previous line position
+                primary_data.get(current_line + slice_length),           // Current line position
             ) {
-                (Some(previous_line), Some(new_line)) => previous_line == new_line,
+                (Some(previous_line_data), Some(current_line_data)) => {
+                    println!(
+                        "Previous line was {}, Current line was {}",
+                        previous_line_data, current_line_data
+                    );
+                    previous_line_data == current_line_data
+                }
+                _ => false,
+            };
+            let add_opposite = match (
+                secondary_data.get(current_line + slice_length), // Line opposite the current position in slice
+                primary_data.get(current_line + slice_length + line_offset), // Line to check to see if slice continues in future, ie do we add opposite
+            ) {
+                (Some(opposite_line), Some(future_line)) => {
+                    println!(
+                        "Opposite line was {}, future line was {}, do we add them {}",
+                        opposite_line,
+                        future_line,
+                        opposite_line != future_line
+                    );
+                    opposite_line != future_line // We add the opposite line when these two lines are not equal but are also not NONE
+                }
+                (Some(_), None) => {
+                    // This means that there is a line opposite a slice but there are no future lines and the slice is ending, so we must add this line to removed
+                    true
+                }
                 _ => false,
             };
             // If the original file has a line for that line number and that line has already been seen then return the previous line number otherwise None
-            let overlapping_slice = original_data
-                .get(original_line + slice_length)
-                .and_then(|line| lines_inserted.get(line));
-            match (slice_continues, overlapping_slice) {
-                (true, Some(overlapping_slice)) => {
+            let overlapping_slice = secondary_data
+                .get(current_line + slice_length)
+                .and_then(|line| secondary_map.get(line));
+            // We match against the next index as well if it exists
+            // slice_continues, slice_continues + 1, overlapping_slice
+            match (slice_continues, add_opposite, overlapping_slice) {
+                (true, _, Some(overlapping_slice)) => {
                     // TODO: Here we return the longest of the two slices as the matching sequence
-                    // Overlapping slice contains the other previous line
+                    // NOTE: Finding a future slice here is impossible?
+                    debug_assert!(!add_opposite);
+                    // NOTE: Overlapping slice where the initial slice was right?
                     eprintln!(
                         "Previously removed overlapping slice found at {}",
                         overlapping_slice
                     );
                     // NOTE: So overlapping slice here points to the index in the new file
                     // NOTE: and previous line points to the slice on the left
-                    // So here we return the length of both sides of the slices
-                    // We always want to treat the longer slice as not moving since that means that
-                    // less changes to the document
-                    // EABCDPLO - Initial slice is the longest
-                    // PLOABCD
-                    // vs
-                    // FRPLOABCD
-                    // ABCDPLO - Initial slice is not the longest
-                    // The two slices overlap and we want to remove PLO and insert PLO - ie move PLO
-                    // We return the indexes to remove and the indexes to insert
-                    // The indexes involved in inserting were already added we just need to add the ones to remove
-                    return SliceType::Overlapping(0, 0);
+                    // Overlapping slices need to be processed in one go
+                    // TODO: Increment lines based on length of slice
                 }
-                (true, None) => {
+                (true, true, None) => {
+                    // Slice continues and we add the opposite to removed
                     eprintln!(
-                        "Slice continues at {} in the new document",
-                        new_line + slice_length
-                    );
+                                            "Slice continues at {} in the new document and we need to add the opposite line",
+                                            current_line + slice_length
+                                        );
                     // If our position in the slice is less than the current position in the new file
-                    if previous_line + slice_length < new_line {
+                    if previous_line + slice_length < current_line {
                         // Remove items that were previously considered removed since we have not yet reached a point where previous doesn't point to unprocessed lines
                         eprintln!(
                                                 "Removing previous {} from removed lines since line {} in original should be part of the slice and is less than {} which is the current line position in the new document",
-                                                &original_data[previous_line + slice_length],
+                                                &secondary_data[previous_line + slice_length],
                                                 previous_line + slice_length,
-                                                new_line
+                                                current_line
                                             );
-                        lines_removed.remove(&original_data[previous_line + slice_length]);
+                        primary_map.remove(&secondary_data[previous_line + slice_length]);
                     }
+                    // new_line + slice_length
+                    println!(
+                        "Adding {} at line {} to removed lines",
+                        secondary_data[current_line + slice_length],
+                        current_line + slice_length
+                    );
+                    primary_map.insert(
+                        secondary_data[current_line + slice_length].clone(),
+                        current_line + slice_length,
+                    );
+                    // If next item is != then the slice will end now and the opposite value needs to be added to removed
                     slice_length += 1;
                 }
-                (false, _) => return SliceType::Simple(slice_length), // If the original slice stops as we detect another slice we dont care we deal with that on the next iteration
+                (true, false, None) => {
+                    // Slice continues but we do not add the opposite to removed
+                    eprintln!(
+                        "Slice continues at {} in the new document",
+                        current_line + slice_length
+                    );
+                    // If our position in the slice is less than the current position in the new file
+                    if previous_line + slice_length < current_line {
+                        // Remove items that were previously considered removed since we have not yet reached a point where previous doesn't point to unprocessed lines
+                        eprintln!(
+                                                "Removing previous {} from removed lines since line {} in original should be part of the slice and is less than {} which is the current line position in the new document",
+                                                &secondary_data[previous_line + slice_length],
+                                                previous_line + slice_length,
+                                                current_line
+                                            );
+                        primary_map.remove(&secondary_data[previous_line + slice_length]);
+                    }
+                    // If next item is != then the slice will end now and the opposite value needs to be added to removed
+                    slice_length += 1;
+                }
+                (false, _, _) => break, // If the original slice stops as we detect another slice we dont care we deal with that on the next iteration
             }
         }
-        unreachable!("If we reach the end of the file while looking for the length of a slice then we should hit the return statement in the match first")
+        *processing_line += slice_length;
+        eprintln!(
+            "After slice: Original Line: {}, New Line: {}",
+            current_line, processing_line
+        );
     }
 
     #[cfg(test)]
-    pub fn file_patch(original_file: &path::Path, new_file: &path::Path) {
+    pub fn file_patch(
+        original_file: &path::Path,
+        new_file: &path::Path,
+    ) -> (Vec<usize>, Vec<usize>) {
         use rand::Rng;
         use std::hash::Hasher;
 
@@ -517,7 +619,8 @@ impl<'a> WorkingDirectory<'a> {
                         (Some(previously_removed), Some(previously_inserted)) => {
                             // Both lines have been seen so two slices are overlapping
                             println!("Both have been seen so guarenteed overlapping move");
-                            return WorkingDirectory::process_overlapping(6);
+                            unimplemented!("Overlapping sequences not supported yet");
+                            //return WorkingDirectory::process_overlapping(6);
                             // We check both slices until one of them ends, the one that ends first is the one we use
                             // Here the two overlapping slices begin at the same point
                             original_line += 1;
@@ -536,31 +639,79 @@ impl<'a> WorkingDirectory<'a> {
                             eprintln!("A line previously thought to be removed has been seen, {} has been seen at line {}, {} has not", new_data[new_line].as_str(), previous_line, original_data[original_line].as_str());
                             // We already know that the slice is at least 1 length so we start from 1
                             let mut slice_length = 1;
-                            let mut index_to_check = slice_length + 1;
+                            // let mut index_to_check = slice_length + 1;
                             eprintln!("{} is no longer considered removed", &new_data[new_line]);
                             lines_removed.remove(new_data[new_line].as_str());
-                            // TODO: Deal with zero before starting loop
+                            // NOTE: While its relatively safe to do this it's possible this needs to be reinserted if there are overlapping sequences
+                            let line_offset = new_line - previous_line;
+                            eprintln!(
+                                "The offset between current line and previous is {}",
+                                line_offset
+                            );
+                            // TODO: Check if the opposite side needs to be removed in the case of a slice with a size of one
+                            // NOTE: This match checks if the start of the slice is also the end of the slice
+                            // The ideal way of handling this is to immediately enter the below loop instead of special processing
+                            // This doesn't seem possible since we already know that the initial position is part of a slice so either we check twice
+                            // or change the order, ie remove then check next break if not
+                            match (
+                                original_data.get(new_line), // Line opposite the start of the slice
+                                new_data.get(new_line + line_offset), // Line to check to see if the start of the slice is also the end of the slice
+                            ) {
+                                (Some(opposite_line), Some(future_line)) => {
+                                    eprintln!("Opposite line was {}, future line was {}, do we add them {}", opposite_line, future_line, opposite_line != future_line);
+                                    if opposite_line != future_line {
+                                        // We add the opposite line when these two lines are not equal but are also not NONE
+                                        lines_removed
+                                            .insert(original_data[new_line].clone(), new_line);
+                                        // TODO: We can exit slice handling early since the slice has ended
+                                    }
+                                }
+                                (Some(_), None) => {
+                                    // This means that there is a line opposite a slice but there are no future lines and the slice is ending, so we must add this line to removed
+                                    lines_removed.insert(original_data[new_line].clone(), new_line);
+                                    // TODO: We can end slice handling early since the slice has ended
+                                }
+                                _ => {}
+                            };
                             // A slice can only be as long as the smallest file or section if we have broken the file into parts
                             let total = new_data.len().max(original_data.len()) - new_line;
                             eprintln!("Processing a slice that is potentially {} long", total);
+
                             // TODO: A loop here is not ideal but it can be vectorized
-                            // Determine the slice length or where the slice ends
-                            // TODO: By always checking for matches one element ahead we know when to stop adding items to the removed lines and thus avoid 2 loops
-                            // TODO: We always check ahead by one to see if we add the opposite side to the removed lines
+                            // Process the slice
+                            // NOTE: We always check ahead by one to see if we add the current opposite side to the removed lines
                             for _ in 1..total {
                                 eprintln!(
                                     "Slice Iteration: {:?}, {:?}",
                                     &lines_removed, &lines_inserted
                                 );
                                 // QUESTION: Ideally we use an iterator here, if we return None the iterator stops, but dealing with overlapping slices becomes a challenge
-
+                                // TODO: These three variables can all be moved inside a custom iterator
                                 // Returns true if the two lines match otherwise false, this includes a line not being present etc...
                                 let slice_continues = match (
-                                    original_data.get(previous_line + slice_length),
-                                    new_data.get(new_line + slice_length),
+                                    original_data.get(previous_line + slice_length), // Previous line position
+                                    new_data.get(new_line + slice_length), // Current line position
                                 ) {
                                     (Some(previous_line), Some(new_line)) => {
+                                        println!(
+                                            "Previous line was {}, Current line was {}",
+                                            previous_line, new_line
+                                        );
                                         previous_line == new_line
+                                    }
+                                    _ => false,
+                                };
+                                let add_opposite = match (
+                                    original_data.get(new_line + slice_length), // Line opposite the current position in slice
+                                    new_data.get(new_line + slice_length + line_offset), // Line to check to see if slice continues in future, ie do we add opposite
+                                ) {
+                                    (Some(opposite_line), Some(future_line)) => {
+                                        println!("Opposite line was {}, future line was {}, do we add them {}", opposite_line, future_line, opposite_line != future_line);
+                                        opposite_line != future_line // We add the opposite line when these two lines are not equal but are also not NONE
+                                    }
+                                    (Some(_), None) => {
+                                        // This means that there is a line opposite a slice but there are no future lines and the slice is ending, so we must add this line to removed
+                                        true
                                     }
                                     _ => false,
                                 };
@@ -570,9 +721,11 @@ impl<'a> WorkingDirectory<'a> {
                                     .and_then(|line| lines_inserted.get(line));
                                 // We match against the next index as well if it exists
                                 // slice_continues, slice_continues + 1, overlapping_slice
-                                match (slice_continues, overlapping_slice) {
-                                    (true, Some(overlapping_slice)) => {
+                                match (slice_continues, add_opposite, overlapping_slice) {
+                                    (true, _, Some(overlapping_slice)) => {
                                         // TODO: Here we return the longest of the two slices as the matching sequence
+                                        // NOTE: Finding a future slice here is impossible?
+                                        debug_assert!(!add_opposite);
                                         // NOTE: Overlapping slice where the initial slice was right?
                                         eprintln!(
                                             "Previously removed overlapping slice found at {}",
@@ -580,8 +733,43 @@ impl<'a> WorkingDirectory<'a> {
                                         );
                                         // NOTE: So overlapping slice here points to the index in the new file
                                         // NOTE: and previous line points to the slice on the left
+                                        // Overlapping slices need to be processed in one go
+                                        // TODO: Increment lines based on length of slice
                                     }
-                                    (true, None) => {
+                                    (true, true, None) => {
+                                        // Slice continues and we add the opposite to removed
+                                        eprintln!(
+                                            "Slice continues at {} in the new document and we need to add the opposite line",
+                                            new_line + slice_length
+                                        );
+                                        // If our position in the slice is less than the current position in the new file
+                                        if previous_line + slice_length < new_line {
+                                            // Remove items that were previously considered removed since we have not yet reached a point where previous doesn't point to unprocessed lines
+                                            eprintln!(
+                                                "Removing previous {} from removed lines since line {} in original should be part of the slice and is less than {} which is the current line position in the new document",
+                                                &original_data[previous_line + slice_length],
+                                                previous_line + slice_length,
+                                                new_line
+                                            );
+                                            lines_removed.remove(
+                                                &original_data[previous_line + slice_length],
+                                            );
+                                        }
+                                        // new_line + slice_length
+                                        println!(
+                                            "Adding {} at line {} to removed lines",
+                                            original_data[new_line + slice_length],
+                                            new_line + slice_length
+                                        );
+                                        lines_removed.insert(
+                                            original_data[new_line + slice_length].clone(),
+                                            new_line + slice_length,
+                                        );
+                                        // If next item is != then the slice will end now and the opposite value needs to be added to removed
+                                        slice_length += 1;
+                                    }
+                                    (true, false, None) => {
+                                        // Slice continues but we do not add the opposite to removed
                                         eprintln!(
                                             "Slice continues at {} in the new document",
                                             new_line + slice_length
@@ -602,30 +790,9 @@ impl<'a> WorkingDirectory<'a> {
                                         // If next item is != then the slice will end now and the opposite value needs to be added to removed
                                         slice_length += 1;
                                     }
-                                    (false, _) => break, // If the original slice stops as we detect another slice we dont care we deal with that on the next iteration
+                                    (false, _, _) => break, // If the original slice stops as we detect another slice we dont care we deal with that on the next iteration
                                 }
                             }
-                            // Get the number of items to add - this is either the offset between previous line and current line
-                            // or the length of the slice, which ever is smaller
-                            let offset = new_line - previous_line;
-                            let items_to_add = slice_length.min(offset);
-                            eprintln!("Need to add {} items to the hashmap", items_to_add);
-                            // Starting offset is always new_line + slice_length and the end offset is starting_offset - items_to_add
-                            let end_of_slice = new_line + slice_length;
-                            let start_of_slice = end_of_slice - items_to_add;
-                            eprintln!("Start at {}, end at {}", start_of_slice, end_of_slice - 1);
-                            for index in start_of_slice..end_of_slice {
-                                // TODO: Doesn't take into account a shorter original file
-                                match original_data.get(index) {
-                                    Some(line_removed) => {
-                                        eprintln!("Adding index {} to inserted", index);
-                                        lines_removed.insert(line_removed.clone(), index);
-                                    }
-                                    None => break, // The original file has run out of lines so there is no matching items for the sequence to have missed
-                                                   // TODO: Does this cause a problem when the function returns
-                                }
-                            }
-
                             new_line += slice_length;
                             original_line += slice_length;
                             eprintln!(
@@ -638,87 +805,168 @@ impl<'a> WorkingDirectory<'a> {
                             // A K
                             // B L
                             // C M
-                            // K N <- Previously thought to be inserted
-                            // TODO: Deal with the unseen value in new_data[new_line] by adding it to removed
+                            // D A <- Previously thought to be removed
+
+                            // A line in the original file has been seen before
+                            // Get the line number where we previously saw this line
                             let previous_line = *previously_inserted;
+                            eprintln!("A line previously thought to be inserted has been seen, {} has been seen at line {}, {} has not", original_data[new_line].as_str(), previous_line, new_data[original_line].as_str());
                             // We already know that the slice is at least 1 length so we start from 1
                             let mut slice_length = 1;
+                            // let mut index_to_check = slice_length + 1;
                             eprintln!(
-                                "No longer considered removed {}",
-                                &original_data[original_line]
+                                "{} is no longer considered inserted",
+                                &original_data[new_line]
                             );
-                            lines_inserted.remove(original_data[original_line].as_str());
-                            // TODO: Deal with zero before starting loop
+                            lines_inserted.remove(original_data[new_line].as_str());
+                            // NOTE: While its relatively safe to do this it's possible this needs to be reinserted if there are overlapping sequences
+                            let line_offset = new_line - previous_line;
+                            eprintln!(
+                                "The offset between current line and previous is {}",
+                                line_offset
+                            );
+                            // TODO: Check if the opposite side needs to be removed in the case of a slice with a size of one
+                            // NOTE: This match checks if the start of the slice is also the end of the slice
+                            // The ideal way of handling this is to immediately enter the below loop instead of special processing
+                            // This doesn't seem possible since we already know that the initial position is part of a slice so either we check twice
+                            // or change the order, ie remove then check next break if not
+                            match (
+                                new_data.get(new_line), // Line opposite the start of the slice
+                                original_data.get(new_line + line_offset), // Line to check to see if the start of the slice is also the end of the slice
+                            ) {
+                                (Some(opposite_line), Some(future_line)) => {
+                                    eprintln!("Opposite line was {}, future line was {}, do we add them {}", opposite_line, future_line, opposite_line != future_line);
+                                    if opposite_line != future_line {
+                                        // We add the opposite line when these two lines are not equal but are also not NONE
+                                        lines_inserted.insert(new_data[new_line].clone(), new_line);
+                                        // TODO: We can exit slice handling early since the slice has ended
+                                    }
+                                }
+                                (Some(_), None) => {
+                                    // This means that there is a line opposite a slice but there are no future lines and the slice is ending, so we must add this line to removed
+                                    lines_inserted.insert(new_data[new_line].clone(), new_line);
+                                    // TODO: We can end slice handling early since the slice has ended
+                                }
+                                _ => {}
+                            };
                             // A slice can only be as long as the smallest file or section if we have broken the file into parts
-                            let total = new_data.len().max(original_data.len()) - original_line;
-                            // TODO: A loop here is not ideal but it can be vectorized
-                            // Determine the slice length or where the slice ends
-                            for _ in 1..total {
-                                // QUESTION: Ideally we use an iterator here, if we return None the iterator stops, but dealing with overlapping slices becomes a challenge
+                            let total = new_data.len().max(original_data.len()) - new_line;
+                            eprintln!("Processing a slice that is potentially {} long", total);
 
+                            // TODO: A loop here is not ideal but it can be vectorized
+                            // Process the slice
+                            // NOTE: We always check ahead by one to see if we add the current opposite side to the removed lines
+                            for _ in 1..total {
+                                eprintln!(
+                                    "Slice Iteration: {:?}, {:?}",
+                                    &lines_removed, &lines_inserted
+                                );
+                                // QUESTION: Ideally we use an iterator here, if we return None the iterator stops, but dealing with overlapping slices becomes a challenge
+                                // TODO: These three variables can all be moved inside a custom iterator
                                 // Returns true if the two lines match otherwise false, this includes a line not being present etc...
                                 let slice_continues = match (
-                                    original_data.get(original_line + slice_length),
-                                    new_data.get(previous_line + slice_length),
+                                    new_data.get(previous_line + slice_length), // Previous line position
+                                    original_data.get(new_line + slice_length), // Current line position
                                 ) {
                                     (Some(previous_line), Some(new_line)) => {
+                                        println!(
+                                            "Previous line was {}, Current line was {}",
+                                            previous_line, new_line
+                                        );
                                         previous_line == new_line
                                     }
                                     _ => false,
                                 };
-                                // If the new file has a line for that line number and that line has already been seen then return the previous line number otherwise None
+                                let add_opposite = match (
+                                    new_data.get(new_line + slice_length), // Line opposite the current position in slice
+                                    original_data.get(new_line + slice_length + line_offset), // Line to check to see if slice continues in future, ie do we add opposite
+                                ) {
+                                    (Some(opposite_line), Some(future_line)) => {
+                                        println!("Opposite line was {}, future line was {}, do we add them {}", opposite_line, future_line, opposite_line != future_line);
+                                        opposite_line != future_line // We add the opposite line when these two lines are not equal but are also not NONE
+                                    }
+                                    (Some(_), None) => {
+                                        // This means that there is a line opposite a slice but there are no future lines and the slice is ending, so we must add this line to removed
+                                        true
+                                    }
+                                    _ => false,
+                                };
+                                // If the original file has a line for that line number and that line has already been seen then return the previous line number otherwise None
                                 let overlapping_slice = new_data
-                                    .get(new_line + slice_length)
+                                    .get(original_line + slice_length)
                                     .and_then(|line| lines_removed.get(line));
-                                match (slice_continues, overlapping_slice) {
-                                    (true, Some(overlapping_slice)) => {
+                                // We match against the next index as well if it exists
+                                // slice_continues, slice_continues + 1, overlapping_slice
+                                match (slice_continues, add_opposite, overlapping_slice) {
+                                    (true, _, Some(overlapping_slice)) => {
                                         // TODO: Here we return the longest of the two slices as the matching sequence
+                                        // NOTE: Finding a future slice here is impossible?
+                                        debug_assert!(!add_opposite);
+                                        // NOTE: Overlapping slice where the initial slice was right?
                                         eprintln!(
-                                            "Overlapping slice found at {}",
+                                            "Previously inserted overlapping slice found at {}",
                                             overlapping_slice
                                         );
+                                        // NOTE: So overlapping slice here points to the index in the new file
+                                        // NOTE: and previous line points to the slice on the left
+                                        // Overlapping slices need to be processed in one go
+                                        // TODO: Increment lines based on length of slice
                                     }
-                                    (true, None) => {
+                                    (true, true, None) => {
+                                        // Slice continues and we add the opposite to removed
                                         eprintln!(
-                                            "Slice continues at {} in the original document",
-                                            original_line + slice_length
+                                            "Slice continues at {} in the new document and we need to add the opposite line",
+                                            new_line + slice_length
                                         );
                                         // If our position in the slice is less than the current position in the new file
-                                        if previous_line + slice_length < original_line {
+                                        if previous_line + slice_length < new_line {
                                             // Remove items that were previously considered removed since we have not yet reached a point where previous doesn't point to unprocessed lines
                                             eprintln!(
                                                 "Removing previous {} from inserted lines since line {} in new should be part of the slice and is less than {} which is the current line position in the original document",
                                                 &new_data[previous_line + slice_length],
                                                 previous_line + slice_length,
-                                                original_line
+                                                new_line
                                             );
                                             lines_inserted
                                                 .remove(&new_data[previous_line + slice_length]);
                                         }
+                                        // new_line + slice_length
+                                        eprintln!(
+                                            "Adding {} at line {} to inserted lines",
+                                            new_data[new_line + slice_length],
+                                            new_line + slice_length
+                                        );
+                                        lines_inserted.insert(
+                                            new_data[new_line + slice_length].clone(),
+                                            new_line + slice_length,
+                                        );
+                                        // If next item is != then the slice will end now and the opposite value needs to be added to removed
                                         slice_length += 1;
                                     }
-                                    (false, _) => break, // If the original slice stops as we detect another slice we dont care we deal with that on the next iteration
-                                }
-                            }
-                            // Get the number of items to add - this is either the offset between previous line and current line
-                            // or the length of the slice, which ever is smaller
-                            let offset = original_line - previous_line;
-                            let items_to_add = slice_length.min(offset);
-                            eprintln!("Need to add {} items to the hashmap", items_to_add);
-                            // Starting offset is always new_line + slice_length and the end offset is starting_offset - items_to_add
-                            let end_of_slice = original_line + slice_length;
-                            let start_of_slice = end_of_slice - items_to_add;
-                            eprintln!("Start at {}, end at {}", start_of_slice, end_of_slice - 1);
-                            for index in start_of_slice..end_of_slice {
-                                match new_data.get(index) {
-                                    Some(line_inserted) => {
-                                        eprintln!("Adding index {} to inserted", index);
-                                        lines_inserted.insert(line_inserted.clone(), index);
+                                    (true, false, None) => {
+                                        // Slice continues but we do not add the opposite to removed
+                                        eprintln!(
+                                            "Slice continues at {} in the new document",
+                                            new_line + slice_length
+                                        );
+                                        // If our position in the slice is less than the current position in the new file
+                                        if previous_line + slice_length < new_line {
+                                            // Remove items that were previously considered removed since we have not yet reached a point where previous doesn't point to unprocessed lines
+                                            eprintln!(
+                                                "Removing previous {} from inserted lines since line {} in edited should be part of the slice and is less than {} which is the current line position in the original document",
+                                                &new_data[previous_line + slice_length],
+                                                previous_line + slice_length,
+                                                new_line
+                                            );
+                                            lines_inserted
+                                                .remove(&new_data[previous_line + slice_length]);
+                                        }
+                                        // If next item is != then the slice will end now and the opposite value needs to be added to removed
+                                        slice_length += 1;
                                     }
-                                    None => break, // The new file ran out of lines so the slice can't be next to inserted lines
+                                    (false, _, _) => break, // If the original slice stops as we detect another slice we dont care we deal with that on the next iteration
                                 }
                             }
-
                             new_line += slice_length;
                             original_line += slice_length;
                             eprintln!(
@@ -786,6 +1034,16 @@ impl<'a> WorkingDirectory<'a> {
         }
         println!("Inserted {:?}", lines_inserted);
         println!("Lines removed {:?}", lines_removed);
+        return (
+            lines_removed
+                .values()
+                .map(|line_number| *line_number)
+                .collect::<Vec<_>>(),
+            lines_inserted
+                .values()
+                .map(|line_number| *line_number)
+                .collect::<Vec<_>>(),
+        );
     }
 }
 
@@ -806,6 +1064,29 @@ mod tests {
     use testspace::{TestSpace, TestSpaceFile};
 
     #[test]
+    fn basic_previously_removed_short_test() {
+        let ts = TestSpace::new();
+        let mut original_file = ts.create_text_file();
+        original_file.append_line("A"); // 0
+        original_file.append_line("B"); // 1
+        original_file.append_line("C"); // 2
+        original_file.append_line("D"); // 3
+        let mut changed_file = ts.create_text_file();
+        changed_file.append_line("J"); // 0
+        changed_file.append_line("A"); // 1
+        changed_file.append_line("B"); // 2
+        changed_file.append_line("C"); // 3
+                                       // ABCD
+                                       // JABC
+        let (removed_lines, inserted_lines) =
+            WorkingDirectory::file_patch(original_file.get_path(), changed_file.get_path());
+        assert_eq!(removed_lines.len(), 1);
+        assert_eq!(inserted_lines.len(), 1);
+        assert_eq!(removed_lines, vec!(3)); // Line 3 in original document was removed
+        assert_eq!(inserted_lines, vec!(0)); // Line 0 in edited document was inserted
+    }
+
+    #[test]
     fn basic_previously_removed_test() {
         let ts = TestSpace::new();
         let mut original_file = ts.create_text_file();
@@ -822,31 +1103,15 @@ mod tests {
         changed_file.append_line("C"); // 4
                                        // ABCDE
                                        // JKABC
-        WorkingDirectory::file_patch(original_file.get_path(), changed_file.get_path());
-    }
-
-    #[test]
-    fn basic_previously_removed_test2() {
-        let ts = TestSpace::new();
-        let mut original_file = ts.create_text_file();
-        original_file.append_line("A"); // 0
-        original_file.append_line("B"); // 1
-        original_file.append_line("C"); // 2
-        original_file.append_line("D"); // 3
-        original_file.append_line("E"); // 4
-        let mut changed_file = ts.create_text_file();
-        changed_file.append_line("J"); // 0
-        changed_file.append_line("K"); // 1
-        changed_file.append_line("A"); // 2
-        changed_file.append_line("B"); // 3
-        changed_file.append_line("C"); // 4
-                                       // JKABC
-                                       // ABCDE
-        WorkingDirectory::file_patch(original_file.get_path(), changed_file.get_path());
+        let (removed_lines, inserted_lines) =
+            WorkingDirectory::file_patch(original_file.get_path(), changed_file.get_path());
+        assert_eq!(removed_lines, vec!(3, 4)); // Line 3 and 4 in original document was removed
+        assert_eq!(inserted_lines, vec!(0, 1)); // Line 0 and 1 in edited document was inserted
     }
 
     #[test]
     fn length_of_one_sequence_removed_test() {
+        // Sequence is only one long
         let ts = TestSpace::new();
         let mut original_file = ts.create_text_file();
         original_file.append_line("A"); // 0
@@ -861,6 +1126,33 @@ mod tests {
                                        // ABCP
                                        // KAST
         WorkingDirectory::file_patch(original_file.get_path(), changed_file.get_path());
+    }
+
+    #[test]
+    fn basic_previously_removed_more_overlap_test() {
+        // Tests appropriate response to multiple overlapping lines
+        // ie A and B in changed file overlap with sequence in original in 2 places not one
+        let ts = TestSpace::new();
+        let mut original_file = ts.create_text_file();
+        original_file.append_line("A"); // 0
+        original_file.append_line("B"); // 1
+        original_file.append_line("C"); // 2
+        original_file.append_line("D"); // 3
+        original_file.append_line("E"); // 4
+        let mut changed_file = ts.create_text_file();
+        changed_file.append_line("J"); // 0
+        changed_file.append_line("A"); // 1
+        changed_file.append_line("B"); // 2
+        changed_file.append_line("C"); // 3
+        changed_file.append_line("F"); // 4
+                                       // ABCDE
+                                       // JABCF
+        let (mut removed_lines, mut inserted_lines) =
+            WorkingDirectory::file_patch(original_file.get_path(), changed_file.get_path());
+        removed_lines.sort();
+        inserted_lines.sort();
+        assert_eq!(removed_lines, vec!(3, 4)); // Line 3 and 4 in original document was removed
+        assert_eq!(inserted_lines, vec!(0, 4)); // Line 0 and 1 in edited document was inserted
     }
 
     #[test]
@@ -901,7 +1193,8 @@ mod tests {
         changed_file.append_line("A"); // 4
         changed_file.append_line("B"); // 5
         changed_file.append_line("C"); // 6
-        WorkingDirectory::file_patch(original_file.get_path(), changed_file.get_path());
+        let (mut removed_lines, mut inserted_lines) =
+            WorkingDirectory::file_patch(original_file.get_path(), changed_file.get_path());
     }
 
     #[test]
@@ -921,7 +1214,12 @@ mod tests {
         changed_file.append_line("E"); // 4
                                        // JKABC
                                        // ABCDE
-        WorkingDirectory::file_patch(original_file.get_path(), changed_file.get_path());
+        let (mut removed_lines, mut inserted_lines) =
+            WorkingDirectory::file_patch(original_file.get_path(), changed_file.get_path());
+        removed_lines.sort();
+        inserted_lines.sort();
+        assert_eq!(removed_lines, vec!(0, 1));
+        assert_eq!(inserted_lines, vec!(3, 4))
     }
 
     #[test]
