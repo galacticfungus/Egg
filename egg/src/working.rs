@@ -515,7 +515,8 @@ impl<'a> WorkingDirectory<'a> {
                         destination_line: overlapping_previous + index,
                     };
                     lines_moved.insert(original_file[overlapping_start + index].clone(), line_moved);
-                    // TODO: Remove the old insert 
+                    // TODO: Remove the original inserts
+                    lines_inserted.remove(original_file[overlapping_start + index].as_str());
                 } else {
                     println!("Do we need to add {} to the removed items", original_file[index + overlapping_start]);
                     lines_removed.insert(original_file[index + overlapping_start].clone(), index + overlapping_start);
